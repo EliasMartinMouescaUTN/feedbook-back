@@ -17,14 +17,15 @@ const (
 )
 
 type loginRequest struct {
-	Username  string `json:"username"`
-	User      string `json:"user"`
-	Password  string `json:"password"`
-	EasyLogin bool   `json:"easy_login"`
+	Username    string `json:"username"`
+	User        string `json:"user"`
+	Password    string `json:"password"`
+	SecureLogin bool   `json:"secure_login"`
 }
 
 type loginResponse struct {
 	Token string `json:"token"`
+	Exp   int64  `json:"exp"`
 }
 
 type errorResponse struct {
@@ -75,18 +76,20 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).Unix()
 	token, err := signJWT(map[string]any{
-		"username":   username,
-		"password":   password,
-		"easy_login": request.EasyLogin,
-		"iat":        time.Now().Unix(),
+		"username":     username,
+		"password":     password,
+		"secure_login": request.SecureLogin,
+		"iat":          time.Now().Unix(),
+		"exp":          expiresAt,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, loginResponse{Token: token})
+	writeJSON(w, http.StatusOK, loginResponse{Token: token, Exp: expiresAt})
 }
 
 func signJWT(claims map[string]any) (string, error) {

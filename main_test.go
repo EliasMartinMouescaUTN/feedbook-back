@@ -12,7 +12,7 @@ func TestHandleLoginSuccess(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/login",
-		strings.NewReader(`{"username":"demo","password":"demo","easy_login":true}`),
+		strings.NewReader(`{"username":"demo","password":"demo","secure_login":true}`),
 	)
 	recorder := httptest.NewRecorder()
 
@@ -36,7 +36,7 @@ func TestHandleLoginInvalidCredentials(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/login",
-		strings.NewReader(`{"username":"demo","password":"other","easy_login":false}`),
+		strings.NewReader(`{"username":"demo","password":"other","secure_login":false}`),
 	)
 	recorder := httptest.NewRecorder()
 

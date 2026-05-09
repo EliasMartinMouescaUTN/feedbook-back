@@ -1,6 +1,6 @@
 # FeedBook Back
 
-Backend minimo para la POC de login de FeedBook.
+Backend minimo para la POC de login seguro de FeedBook.
 
 ## Endpoint
 
@@ -12,7 +12,7 @@ Body JSON:
 {
   "username": "demo",
   "password": "demo",
-  "easy_login": false
+  "secure_login": false
 }
 ```
 
@@ -21,6 +21,7 @@ Tambien acepta `user` en lugar de `username`.
 Regla actual:
 
 - Si `username` y `password` son exactamente la misma string, devuelve `200` con un JWT.
+- El JWT incluye `secure_login` y `exp`.
 - Si no coinciden, devuelve `401`.
 
 ## Run
