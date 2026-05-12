@@ -1,0 +1,166 @@
+package feedbook
+
+import (
+	"errors"
+	"strconv"
+	"strings"
+)
+
+var ErrNotFound = errors.New("not found")
+var ErrInvalidInput = errors.New("invalid input")
+
+type Service struct {
+	store *Store
+}
+
+func NewService(store *Store) *Service {
+	return &Service{store: store}
+}
+
+func (s *Service) GetBooks() []Book { return s.store.Books() }
+
+func (s *Service) GetBookByID(bookID string) (Book, error) {
+	book, ok := s.store.BookByID(bookID)
+	if !ok {
+		return Book{}, ErrNotFound
+	}
+	return book, nil
+}
+
+func (s *Service) GetExploreUsers() []ExploreUser { return s.store.ExploreUsers() }
+
+func (s *Service) GetReadingProgress(bookID string) (*ReadingProgress, error) {
+	progress, ok := s.store.ReadingProgress(bookID)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return &progress, nil
+}
+
+func (s *Service) GetReviews(bookID string) []Review { return s.store.Reviews(bookID) }
+
+func (s *Service) GetAuthors() []Author { return s.store.Authors() }
+
+func (s *Service) GetAuthorByID(authorID string) (Author, error) {
+	author, ok := s.store.AuthorByID(authorID)
+	if !ok {
+		return Author{}, ErrNotFound
+	}
+	return author, nil
+}
+
+func (s *Service) ToggleAuthorFollow(authorID string) error {
+	if _, ok := s.store.AuthorByID(authorID); !ok {
+		return ErrNotFound
+	}
+	s.store.ToggleFollow(authorID)
+	return nil
+}
+
+func (s *Service) GetOwnProfile() Profile { return s.store.OwnProfile() }
+
+func (s *Service) GetOwnPublicPreview() Profile {
+	profile := s.store.OwnProfile()
+	profile.ProfileStats = []ProfileStat{
+		{Label: "Books read", Value: strconv.Itoa(profile.CompletedBooks)},
+		{Label: "Daily goal", Value: dailyGoalLabel(profile.ReadingGoal)},
+	}
+	return profile
+}
+
+func (s *Service) GetPublicProfile() Profile { return s.store.PublicProfile() }
+
+func (s *Service) GetHome() Home {
+	profile := s.store.OwnProfile()
+	return Home{
+		TrendingTitle: "Trending Now",
+		Avatar:        profile.Avatar,
+		FeaturedBook:  HomeFeaturedBook{Label: "FEATURED", Title: "The Midnight Library", Author: "Matt Haig", CoverImageURL: "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&w=1200&q=80"},
+		RankedBooks: []HomeRankedBook{
+			{RankLabel: "01", Title: "Circe", Author: "Madeline Miller", CoverImageURL: coverURL("9780316556323")},
+			{RankLabel: "02", Title: "Piranesi", Author: "Susanna Clarke", CoverImageURL: coverURL("9781635575637")},
+			{RankLabel: "03", Title: "Project Hail Mary", Author: "Andy Weir", CoverImageURL: coverURL("9780593135204")},
+		},
+		ReadingRooms: []HomeReadingRoom{
+			{HostName: "Eleanor", HostImageURL: avatarURL("eleanor"), Title: "Magical Realism Book Club", ReaderCountLabel: "1.2k readers"},
+			{HostName: "James", HostImageURL: avatarURL("james"), Title: "20th Century Classics", ReaderCountLabel: "850 readers"},
+		},
+		Curators: []HomeCurator{
+			{Name: "Dr. Aris Thorne", Focus: "Historical Non-Fiction Focus", ImageURL: avatarURL("aris-thorne")},
+			{Name: "Lila Vance", Focus: "Contemporary Lit & Essays", ImageURL: avatarURL("lila-vance")},
+		},
+	}
+}
+
+func (s *Service) GetOwnLibrary() Library {
+	profile := s.store.OwnProfile()
+	return Library{
+		Title:       "My Library",
+		Subtitle:    "Your personal collection, current read, and completed shelf.",
+		Avatar:      profile.Avatar,
+		CurrentBook: profile.CurrentBook,
+		ReadingBooks: []LibraryBook{
+			{Title: profile.CurrentBook.Title, CoverImageURL: profile.CurrentBook.CoverImageURL},
+			{Title: "Foucault's Pendulum", CoverImageURL: coverURL("9780156032971")},
+			{Title: "If on a winter's night a traveler", CoverImageURL: coverURL("9780156439619")},
+		},
+		ShelfBooks:     profile.PublicLibrary,
+		CompletedBooks: profile.CompletedBooks,
+		ReadHistory: []ReadBook{
+			{Title: "Beloved", Author: "Toni Morrison", StartedOn: "Jan 12, 2026", FinishedOn: "Jan 29, 2026", PersonalRating: 5, CoverAccentHex: 0xFF82645A},
+			{Title: "Pale Fire", Author: "Vladimir Nabokov", StartedOn: "Feb 02, 2026", FinishedOn: "Feb 18, 2026", PersonalRating: 4, CoverAccentHex: 0xFF627A92},
+			{Title: "The Waves", Author: "Virginia Woolf", StartedOn: "Mar 03, 2026", FinishedOn: "Mar 21, 2026", PersonalRating: 5, CoverAccentHex: 0xFF6C8A80},
+			{Title: "Never Let Me Go", Author: "Kazuo Ishiguro", StartedOn: "Apr 01, 2026", FinishedOn: "Apr 14, 2026", PersonalRating: 4, CoverAccentHex: 0xFF536E8A},
+			{Title: "Fictions", Author: "Jorge Luis Borges", StartedOn: "Apr 20, 2026", FinishedOn: "May 03, 2026", PersonalRating: 5, CoverAccentHex: 0xFF8C6B5A},
+			{Title: "The Secret History", Author: "Donna Tartt", StartedOn: "May 08, 2026", FinishedOn: "May 28, 2026", PersonalRating: 5, CoverAccentHex: 0xFF6E918B},
+		},
+	}
+}
+
+func (s *Service) UpdateOwnProfile(request UpdateProfileRequest) (Profile, error) {
+	if strings.TrimSpace(request.Name) == "" || strings.TrimSpace(request.Handle) == "" || strings.TrimSpace(request.Quote) == "" {
+		return Profile{}, ErrInvalidInput
+	}
+	if request.TargetPagesPerDay != nil && *request.TargetPagesPerDay <= 0 {
+		return Profile{}, ErrInvalidInput
+	}
+	profile := s.store.OwnProfile()
+	profile.Name = request.Name
+	profile.Handle = request.Handle
+	profile.Quote = request.Quote
+	profile.Avatar.TopColorHex = request.AvatarTopColorHex
+	profile.Avatar.BottomColorHex = request.AvatarBottomColorHex
+	if request.AvatarPresetID != nil {
+		profile.Avatar.AvatarPresetID = *request.AvatarPresetID
+		profile.Avatar.PresetImageURL = ""
+		for _, preset := range s.store.AvatarPresets() {
+			if preset.ID == *request.AvatarPresetID {
+				profile.Avatar.PresetImageURL = preset.ImageURL
+				break
+			}
+		}
+	}
+	if request.AvatarImageURI != nil {
+		profile.Avatar.ImageURI = *request.AvatarImageURI
+	}
+	if request.TargetPagesPerDay != nil {
+		currentAverage := int(float32(*request.TargetPagesPerDay) * 0.7)
+		if profile.ReadingGoal != nil {
+			currentAverage = profile.ReadingGoal.CurrentAveragePagesPerDay
+		}
+		profile.ReadingGoal = &ReadingGoal{TargetPagesPerDay: *request.TargetPagesPerDay, CurrentAveragePagesPerDay: currentAverage}
+	}
+	s.store.SetOwnProfile(profile)
+	return profile, nil
+}
+
+func (s *Service) GetStats() Stats { return s.store.Stats() }
+
+func (s *Service) GetNotifications() Notifications { return s.store.Notifications() }
+
+func dailyGoalLabel(goal *ReadingGoal) string {
+	if goal == nil {
+		return "None"
+	}
+	return strconv.Itoa(goal.TargetPagesPerDay) + " pgs"
+}

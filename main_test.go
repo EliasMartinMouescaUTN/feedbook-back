@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	feedbook "github.com/feedbook/back/internal/feedbook"
+	feedbookhttp "github.com/feedbook/back/internal/feedbook/http"
 )
 
 func TestHandleLoginSuccess(t *testing.T) {
@@ -44,5 +47,30 @@ func TestHandleLoginInvalidCredentials(t *testing.T) {
 
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", recorder.Code)
+	}
+}
+
+func TestResolveAddrDefaultsToLocalhost(t *testing.T) {
+	if got := resolveAddr(""); got != defaultAddr {
+		t.Fatalf("expected default addr %q, got %q", defaultAddr, got)
+	}
+}
+
+func TestResolveAddrTrimsConfiguredValue(t *testing.T) {
+	if got := resolveAddr(" 0.0.0.0:9090 "); got != "0.0.0.0:9090" {
+		t.Fatalf("expected trimmed addr, got %q", got)
+	}
+}
+
+func TestAPIEndpointsAreMountedUnderAPIPrefix(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(feedbook.NewStore()))))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/home", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for mounted api route, got %d", rec.Code)
 	}
 }
