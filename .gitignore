@@ -1,2 +1,5 @@
 /.gocache/
 /back
+*.test
+*.out
+*.exe

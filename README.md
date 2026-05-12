@@ -1,10 +1,27 @@
 # FeedBook Back
 
-Backend minimo para la POC de login seguro de FeedBook.
+Backend minimo para FeedBook. Expone login y contenido hardcodeado por REST
+para que la app Android consuma los datos mockeados desde un servicio real.
 
 ## Endpoint
 
 - `POST /login`
+- `GET /api/books`
+- `GET /api/books/{id}`
+- `GET /api/books/{id}/progress`
+- `GET /api/books/{id}/reviews`
+- `GET /api/explore/users`
+- `GET /api/authors`
+- `GET /api/authors/{id}`
+- `POST /api/authors/{id}/follow-toggle`
+- `GET /api/home`
+- `GET /api/library/me`
+- `GET /api/profile/me`
+- `PUT /api/profile/me`
+- `GET /api/profile/me/preview`
+- `GET /api/profile/public`
+- `GET /api/stats`
+- `GET /api/notifications`
 
 Body JSON:
 
@@ -27,10 +44,12 @@ Regla actual:
 ## Run
 
 ```bash
+go test ./...
 go run .
 ```
 
-Levanta en `http://127.0.0.1:8080`.
+Levanta en `http://127.0.0.1:8080` por defecto.
+Se puede cambiar con `FEEDBOOK_ADDR`.
 
 Para dispositivo fisico con `adb reverse`:
 

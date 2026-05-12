@@ -7,13 +7,17 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	feedbook "github.com/feedbook/back/internal/feedbook"
+	feedbookhttp "github.com/feedbook/back/internal/feedbook/http"
 )
 
 const (
-	addr      = "127.0.0.1:8080"
-	jwtSecret = "feedbook-local-secret"
+	defaultAddr = "127.0.0.1:8080"
+	jwtSecret   = "feedbook-local-secret"
 )
 
 type loginRequest struct {
@@ -33,8 +37,27 @@ type errorResponse struct {
 }
 
 func main() {
+	var store feedbook.Storer
+	switch os.Getenv("FEEDBOOK_STORE") {
+	case "sqlite":
+		dbPath := os.Getenv("FEEDBOOK_DB_PATH")
+		if dbPath == "" {
+			dbPath = "feedbook.db"
+		}
+		s, err := feedbook.NewSQLiteStore(dbPath)
+		if err != nil {
+			log.Fatalf("sqlite store: %v", err)
+		}
+		store = s
+	default:
+		store = feedbook.NewMemoryStore()
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", handleLogin)
+	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(store))))
+
+	addr := resolveAddr(os.Getenv("FEEDBOOK_ADDR"))
 
 	server := &http.Server{
 		Addr:              addr,
@@ -46,6 +69,14 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server stopped: %v", err)
 	}
+}
+
+func resolveAddr(raw string) string {
+	addr := strings.TrimSpace(raw)
+	if addr == "" {
+		return defaultAddr
+	}
+	return addr
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
