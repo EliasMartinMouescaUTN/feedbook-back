@@ -21,14 +21,15 @@ type ReadingProgress struct {
 }
 
 type Review struct {
-	ID             string  `json:"id"`
-	UserID         string  `json:"user_id"`
-	ReviewerName   string  `json:"reviewer_name"`
-	ReviewerAvatar string  `json:"reviewer_avatar,omitempty"`
-	Rating         float32 `json:"rating"`
-	Text           string  `json:"text"`
-	Likes          int     `json:"likes"`
-	CreatedAt      string  `json:"created_at"`
+	ID             string   `json:"id"`
+	UserID         string   `json:"user_id"`
+	ReviewerName   string   `json:"reviewer_name"`
+	ReviewerAvatar string   `json:"reviewer_avatar,omitempty"`
+	Rating         float32  `json:"rating"`
+	Text           string   `json:"text"`
+	Likes          int      `json:"likes"`
+	LikedBy        []string `json:"liked_by"`
+	CreatedAt      string   `json:"created_at"`
 }
 
 type ExploreUser struct {

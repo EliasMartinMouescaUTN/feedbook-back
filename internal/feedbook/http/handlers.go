@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	feedbook "github.com/feedbook/back/internal/feedbook"
@@ -57,7 +58,19 @@ func (h *Handler) handleBookRoutes(w http.ResponseWriter, r *http.Request) {
 		case "reviews":
 			switch r.Method {
 			case http.MethodGet:
-				writeJSON(w, http.StatusOK, h.service.GetReviews(bookID))
+				page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+				limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+				if page < 1 {
+					page = 1
+				}
+				if limit < 1 {
+					limit = 5
+				}
+				reviews, total := h.service.GetReviews(bookID, page, limit)
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"reviews": reviews,
+					"total":   total,
+				})
 				return
 			case http.MethodPost:
 				var req struct {
@@ -73,6 +86,11 @@ func (h *Handler) handleBookRoutes(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+	}
+	if len(parts) == 4 && parts[1] == "reviews" && parts[3] == "like" && r.Method == http.MethodPost {
+		review, err := h.service.ToggleLike(bookID, parts[2])
+		writeServiceResponse(w, review, err)
+		return
 	}
 	writeJSON(w, http.StatusNotFound, feedbook.ErrorResponse{Error: "not found"})
 }

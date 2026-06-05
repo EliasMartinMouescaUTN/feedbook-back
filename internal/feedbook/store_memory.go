@@ -2,6 +2,7 @@ package feedbook
 
 import (
 	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -17,6 +18,7 @@ type Store struct {
 	exploreUsers    []ExploreUser
 	readingProgress map[string]ReadingProgress
 	reviews         map[string][]Review
+	reviewLikes     map[string]map[string]bool
 	authors         []Author
 	followedAuthors map[string]bool
 }
@@ -30,6 +32,7 @@ func NewMemoryStore() *Store {
 		exploreUsers:    sampleExploreUsers(),
 		readingProgress: sampleReadingProgress(),
 		reviews:         sampleReviews(),
+		reviewLikes:     map[string]map[string]bool{},
 		followedAuthors: map[string]bool{},
 	}
 	store.ownProfile = sampleOwnProfile(store.avatarPresets)
@@ -126,10 +129,28 @@ func (s *Store) SetReadingProgress(bookID string, currentPage int, totalPages in
 	return nil
 }
 
-func (s *Store) Reviews(bookID string) []Review {
+func (s *Store) Reviews(bookID string, page int, limit int) ([]Review, int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return append([]Review(nil), s.reviews[bookID]...)
+	all := s.reviews[bookID]
+	sorted := make([]Review, len(all))
+	copy(sorted, all)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].Likes != sorted[j].Likes {
+			return sorted[i].Likes > sorted[j].Likes
+		}
+		return sorted[i].CreatedAt > sorted[j].CreatedAt
+	})
+	total := len(sorted)
+	start := (page - 1) * limit
+	if start >= total {
+		return []Review{}, total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	return sorted[start:end], total
 }
 
 func (s *Store) SaveReview(bookID string, review Review) error {
@@ -145,6 +166,39 @@ func (s *Store) SaveReview(bookID string, review Review) error {
 	}
 	s.reviews[bookID] = append(reviews, review)
 	return nil
+}
+
+func (s *Store) ToggleLike(userID string, reviewID string) (Review, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for bookID, reviews := range s.reviews {
+		for i, r := range reviews {
+			if r.ID != reviewID {
+				continue
+			}
+			likes := s.reviewLikes[reviewID]
+			if likes == nil {
+				likes = map[string]bool{}
+				s.reviewLikes[reviewID] = likes
+			}
+			if likes[userID] {
+				delete(likes, userID)
+			} else {
+				likes[userID] = true
+			}
+			r.LikedBy = make([]string, 0, len(likes))
+			for uid := range likes {
+				r.LikedBy = append(r.LikedBy, uid)
+			}
+			sort.Strings(r.LikedBy)
+			r.Likes = len(r.LikedBy)
+			reviews[i] = r
+			s.reviews[bookID] = reviews
+			return r, nil
+		}
+	}
+	return Review{}, ErrNotFound
 }
 
 func (s *Store) Authors() []Author {
@@ -281,14 +335,7 @@ func sampleOwnProfile(presets []AvatarPreset) Profile {
 			{Label: "Books read", Value: "142"},
 			{Label: "This year", Value: "19"},
 		},
-		PublicLibrary: []LibraryBook{
-			{ID: "1", Title: "The Secret History", CoverImageURL: coverURL("9781400031702")},
-			{ID: "ficciones", Title: "Ficciones", CoverImageURL: coverURL("9780802130303")},
-			{ID: "never-let-me-go", Title: "Never Let Me Go", CoverImageURL: coverURL("9781400078776")},
-			{ID: "3", Title: "Beloved", CoverImageURL: coverURL("9781400033416")},
-			{ID: "pale-fire", Title: "Pale Fire", CoverImageURL: coverURL("9780679723424")},
-			{ID: "the-waves", Title: "The Waves", CoverImageURL: coverURL("9780156949606")},
-		},
+		PublicLibrary: []LibraryBook{},
 		FeaturedReviews: []FeaturedReview{
 			{BookTitle: "The Secret History", Rating: 5, TimeAgo: "2d ago", Excerpt: "\"A novel built on obsession, elitism and silence. Tartt makes every scene feel both intimate and dangerous.\"", CoverImageURL: coverURL("9781400031702")},
 			{BookTitle: "Beloved", Rating: 5, TimeAgo: "1w ago", Excerpt: "\"Morrison writes memory like weather. Every return to this novel feels heavier and more precise.\"", CoverImageURL: coverURL("9781400033416")},
@@ -397,14 +444,14 @@ func sampleReadingProgress() map[string]ReadingProgress {
 func sampleReviews() map[string][]Review {
 	return map[string][]Review{
 		"1": {
-			{ID: "r1", UserID: "me", ReviewerName: "Evelyn Vance", ReviewerAvatar: avatarURL("witch"), Rating: 5, Text: "A novel built on obsession, elitism and silence. Tartt makes every scene feel both intimate and dangerous.", Likes: 42, CreatedAt: "2d ago"},
-			{ID: "r2", UserID: "", ReviewerName: "Julian Thorne", ReviewerAvatar: avatarURL("pirate"), Rating: 4, Text: "Dense and rewarding. Every page pulls you deeper into its dark academia world.", Likes: 18, CreatedAt: "1w ago"},
+			{ID: "r1", UserID: "me", ReviewerName: "Evelyn Vance", ReviewerAvatar: avatarURL("witch"), Rating: 5, Text: "A novel built on obsession, elitism and silence. Tartt makes every scene feel both intimate and dangerous.", Likes: 42, LikedBy: []string{}, CreatedAt: "2d ago"},
+			{ID: "r2", UserID: "", ReviewerName: "Julian Thorne", ReviewerAvatar: avatarURL("pirate"), Rating: 4, Text: "Dense and rewarding. Every page pulls you deeper into its dark academia world.", Likes: 18, LikedBy: []string{}, CreatedAt: "1w ago"},
 		},
 		"2": {
-			{ID: "r3", UserID: "", ReviewerName: "Julian Thorne", ReviewerAvatar: avatarURL("pirate"), Rating: 5, Text: "A profound meditation on destiny. The novel keeps its labyrinth open long after the final page.", Likes: 31, CreatedAt: "4h ago"},
+			{ID: "r3", UserID: "", ReviewerName: "Julian Thorne", ReviewerAvatar: avatarURL("pirate"), Rating: 5, Text: "A profound meditation on destiny. The novel keeps its labyrinth open long after the final page.", Likes: 31, LikedBy: []string{}, CreatedAt: "4h ago"},
 		},
 		"3": {
-			{ID: "r4", UserID: "", ReviewerName: "Evelyn Vance", ReviewerAvatar: avatarURL("witch"), Rating: 5, Text: "Morrison writes memory like weather. Every return to this novel feels heavier and more precise.", Likes: 67, CreatedAt: "1w ago"},
+			{ID: "r4", UserID: "", ReviewerName: "Evelyn Vance", ReviewerAvatar: avatarURL("witch"), Rating: 5, Text: "Morrison writes memory like weather. Every return to this novel feels heavier and more precise.", Likes: 67, LikedBy: []string{}, CreatedAt: "1w ago"},
 		},
 	}
 }

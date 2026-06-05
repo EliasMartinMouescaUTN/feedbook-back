@@ -12,8 +12,9 @@ type Storer interface {
 	ExploreUsers() []ExploreUser
 	ReadingProgress(string) (ReadingProgress, bool)
 	SetReadingProgress(bookID string, currentPage int, totalPages int) error
-	Reviews(string) []Review
+	Reviews(bookID string, page int, limit int) ([]Review, int)
 	SaveReview(bookID string, review Review) error
+	ToggleLike(userID string, reviewID string) (Review, error)
 	Authors() []Author
 	AuthorByID(string) (Author, bool)
 	ToggleFollow(string) bool

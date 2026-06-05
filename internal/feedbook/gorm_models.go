@@ -168,7 +168,13 @@ type ReviewModel struct {
 	Rating         float32
 	Text           string
 	Likes          int
+	LikedBy        string
 	CreatedAt      string
+}
+
+type ReviewLikeModel struct {
+	ReviewID string `gorm:"primaryKey"`
+	UserID   string `gorm:"primaryKey"`
 }
 
 type ReadingProgressModel struct {

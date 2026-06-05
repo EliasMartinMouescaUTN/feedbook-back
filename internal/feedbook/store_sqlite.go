@@ -1,6 +1,7 @@
 package feedbook
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -43,6 +44,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		&AvatarPresetModel{},
 		&NotificationEntryModel{},
 		&FollowedAuthorModel{},
+		&ReviewLikeModel{},
 	); err != nil {
 		return nil, err
 	}
@@ -102,11 +104,12 @@ func (s *SQLiteStore) seed() {
 
 	for bookID, reviews := range sampleReviews() {
 		for _, r := range reviews {
+			likedByBytes, _ := json.Marshal(r.LikedBy)
 			s.db.Create(&ReviewModel{
 				ID: r.ID, BookID: bookID, UserID: r.UserID,
 				ReviewerName: r.ReviewerName, ReviewerAvatar: r.ReviewerAvatar,
 				Rating: r.Rating, Text: r.Text,
-				Likes: r.Likes, CreatedAt: r.CreatedAt,
+				Likes: r.Likes, LikedBy: string(likedByBytes), CreatedAt: r.CreatedAt,
 			})
 		}
 	}
@@ -611,21 +614,32 @@ func (s *SQLiteStore) SetReadingProgress(bookID string, currentPage int, totalPa
 	return nil
 }
 
-func (s *SQLiteStore) Reviews(bookID string) []Review {
+func (s *SQLiteStore) Reviews(bookID string, page int, limit int) ([]Review, int) {
 	var models []ReviewModel
-	s.db.Where("book_id = ?", bookID).Find(&models)
+	var total int64
+	s.db.Model(&ReviewModel{}).Where("book_id = ?", bookID).Count(&total)
+	s.db.Where("book_id = ?", bookID).
+		Order("likes DESC, created_at DESC").
+		Offset((page - 1) * limit).
+		Limit(limit).
+		Find(&models)
 	result := make([]Review, len(models))
 	for i, m := range models {
+		var likedBy []string
+		if m.LikedBy != "" {
+			json.Unmarshal([]byte(m.LikedBy), &likedBy)
+		}
 		result[i] = Review{
 			ID: m.ID, UserID: m.UserID, ReviewerName: m.ReviewerName,
 			ReviewerAvatar: m.ReviewerAvatar, Rating: m.Rating,
-			Text: m.Text, Likes: m.Likes, CreatedAt: m.CreatedAt,
+			Text: m.Text, Likes: m.Likes, LikedBy: likedBy, CreatedAt: m.CreatedAt,
 		}
 	}
-	return result
+	return result, int(total)
 }
 
 func (s *SQLiteStore) SaveReview(bookID string, review Review) error {
+	likedByBytes, _ := json.Marshal(review.LikedBy)
 	var existing ReviewModel
 	err := s.db.Where("book_id = ? AND user_id = ?", bookID, review.UserID).First(&existing).Error
 	if err == nil {
@@ -635,6 +649,7 @@ func (s *SQLiteStore) SaveReview(bookID string, review Review) error {
 			"reviewer_name":   review.ReviewerName,
 			"reviewer_avatar": review.ReviewerAvatar,
 			"likes":           review.Likes,
+			"liked_by":        string(likedByBytes),
 			"created_at":      review.CreatedAt,
 		}).Error
 	}
@@ -642,8 +657,45 @@ func (s *SQLiteStore) SaveReview(bookID string, review Review) error {
 		ID: review.ID, BookID: bookID, UserID: review.UserID,
 		ReviewerName: review.ReviewerName, ReviewerAvatar: review.ReviewerAvatar,
 		Rating: review.Rating, Text: review.Text,
-		Likes: review.Likes, CreatedAt: review.CreatedAt,
+		Likes: review.Likes, LikedBy: string(likedByBytes), CreatedAt: review.CreatedAt,
 	}).Error
+}
+
+func (s *SQLiteStore) ToggleLike(userID string, reviewID string) (Review, error) {
+	var existing ReviewLikeModel
+	err := s.db.Where("review_id = ? AND user_id = ?", reviewID, userID).First(&existing).Error
+	if err == nil {
+		s.db.Delete(&existing)
+	} else {
+		s.db.Create(&ReviewLikeModel{ReviewID: reviewID, UserID: userID})
+	}
+
+	var count int64
+	s.db.Model(&ReviewLikeModel{}).Where("review_id = ?", reviewID).Count(&count)
+
+	var review ReviewModel
+	if err := s.db.Where("id = ?", reviewID).First(&review).Error; err != nil {
+		return Review{}, ErrNotFound
+	}
+
+	var userIDs []string
+	s.db.Model(&ReviewLikeModel{}).Where("review_id = ?", reviewID).Pluck("user_id", &userIDs)
+	likedByBytes, _ := json.Marshal(userIDs)
+
+	s.db.Model(&review).Updates(map[string]interface{}{
+		"likes":    int(count),
+		"liked_by": string(likedByBytes),
+	})
+
+	review.Likes = int(count)
+	review.LikedBy = string(likedByBytes)
+
+	return Review{
+		ID: review.ID, UserID: review.UserID,
+		ReviewerName: review.ReviewerName, ReviewerAvatar: review.ReviewerAvatar,
+		Rating: review.Rating, Text: review.Text,
+		Likes: review.Likes, LikedBy: userIDs, CreatedAt: review.CreatedAt,
+	}, nil
 }
 
 func (s *SQLiteStore) Authors() []Author {
