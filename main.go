@@ -37,9 +37,25 @@ type errorResponse struct {
 }
 
 func main() {
+	var store feedbook.Storer
+	switch os.Getenv("FEEDBOOK_STORE") {
+	case "sqlite":
+		dbPath := os.Getenv("FEEDBOOK_DB_PATH")
+		if dbPath == "" {
+			dbPath = "feedbook.db"
+		}
+		s, err := feedbook.NewSQLiteStore(dbPath)
+		if err != nil {
+			log.Fatalf("sqlite store: %v", err)
+		}
+		store = s
+	default:
+		store = feedbook.NewMemoryStore()
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", handleLogin)
-	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(feedbook.NewStore()))))
+	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(store))))
 
 	addr := resolveAddr(os.Getenv("FEEDBOOK_ADDR"))
 

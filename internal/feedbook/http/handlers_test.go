@@ -11,7 +11,7 @@ import (
 )
 
 func newTestRouter() http.Handler {
-	return NewRouter(feedbook.NewService(feedbook.NewStore()))
+	return NewRouter(feedbook.NewService(feedbook.NewMemoryStore()))
 }
 
 func TestBooksEndpointReturnsData(t *testing.T) {

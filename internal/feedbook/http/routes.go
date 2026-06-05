@@ -16,6 +16,7 @@ func NewRouter(service *feedbook.Service) http.Handler {
 	mux.HandleFunc("/authors/", handler.handleAuthorRoutes)
 	mux.HandleFunc("/home", handler.handleHome)
 	mux.HandleFunc("/library/me", handler.handleOwnLibrary)
+	mux.HandleFunc("/library/me/books", handler.handleLibraryBooks)
 	mux.HandleFunc("/profile/me", handler.handleOwnProfile)
 	mux.HandleFunc("/profile/me/preview", handler.handleOwnPublicPreview)
 	mux.HandleFunc("/profile/public", handler.handlePublicProfile)

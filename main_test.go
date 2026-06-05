@@ -64,7 +64,7 @@ func TestResolveAddrTrimsConfiguredValue(t *testing.T) {
 
 func TestAPIEndpointsAreMountedUnderAPIPrefix(t *testing.T) {
 	mux := http.NewServeMux()
-	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(feedbook.NewStore()))))
+	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(feedbook.NewMemoryStore()))))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/home", nil)
 	rec := httptest.NewRecorder()

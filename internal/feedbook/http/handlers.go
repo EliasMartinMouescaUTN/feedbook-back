@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	feedbook "github.com/feedbook/back/internal/feedbook"
@@ -34,16 +35,62 @@ func (h *Handler) handleBookRoutes(w http.ResponseWriter, r *http.Request) {
 		writeServiceResponse(w, book, err)
 		return
 	}
-	if len(parts) == 2 && r.Method == http.MethodGet {
+	if len(parts) == 2 {
 		switch parts[1] {
 		case "progress":
-			progress, err := h.service.GetReadingProgress(bookID)
-			writeServiceResponse(w, progress, err)
-			return
+			if r.Method == http.MethodGet {
+				progress, err := h.service.GetReadingProgress(bookID)
+				writeServiceResponse(w, progress, err)
+				return
+			}
+			if r.Method == http.MethodPut {
+				var req struct {
+					CurrentPage int `json:"current_page"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "invalid json body"})
+					return
+				}
+				progress, err := h.service.SaveReadingProgress(bookID, req.CurrentPage)
+				writeServiceResponse(w, progress, err)
+				return
+			}
 		case "reviews":
-			writeJSON(w, http.StatusOK, h.service.GetReviews(bookID))
-			return
+			switch r.Method {
+			case http.MethodGet:
+				page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+				limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+				if page < 1 {
+					page = 1
+				}
+				if limit < 1 {
+					limit = 5
+				}
+				reviews, total := h.service.GetReviews(bookID, page, limit)
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"reviews": reviews,
+					"total":   total,
+				})
+				return
+			case http.MethodPost:
+				var req struct {
+					Rating float32 `json:"rating"`
+					Text   string  `json:"text"`
+				}
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "invalid json body"})
+					return
+				}
+				review, err := h.service.SaveReview(bookID, req.Rating, req.Text)
+				writeServiceResponse(w, review, err)
+				return
+			}
 		}
+	}
+	if len(parts) == 4 && parts[1] == "reviews" && parts[3] == "like" && r.Method == http.MethodPost {
+		review, err := h.service.ToggleLike(bookID, parts[2])
+		writeServiceResponse(w, review, err)
+		return
 	}
 	writeJSON(w, http.StatusNotFound, feedbook.ErrorResponse{Error: "not found"})
 }
@@ -117,6 +164,51 @@ func (h *Handler) handleOwnProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		profile, err := h.service.UpdateOwnProfile(request)
 		writeServiceResponse(w, profile, err)
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, feedbook.ErrorResponse{Error: "method not allowed"})
+	}
+}
+
+func (h *Handler) handleLibraryBooks(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BookID string `json:"book_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "invalid json body"})
+		return
+	}
+	if req.BookID == "" {
+		writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "book_id is required"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		err := h.service.AddBookToLibrary(req.BookID)
+		if errors.Is(err, feedbook.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, feedbook.ErrorResponse{Error: "book not found"})
+			return
+		}
+		if errors.Is(err, feedbook.ErrAlreadyInLibrary) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, feedbook.ErrorResponse{Error: "internal server error"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodDelete:
+		err := h.service.RemoveBookFromLibrary(req.BookID)
+		if errors.Is(err, feedbook.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, feedbook.ErrorResponse{Error: "book not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, feedbook.ErrorResponse{Error: "internal server error"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, feedbook.ErrorResponse{Error: "method not allowed"})
 	}

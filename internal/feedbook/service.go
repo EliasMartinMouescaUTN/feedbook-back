@@ -4,16 +4,17 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var ErrNotFound = errors.New("not found")
 var ErrInvalidInput = errors.New("invalid input")
 
 type Service struct {
-	store *Store
+	store Storer
 }
 
-func NewService(store *Store) *Service {
+func NewService(store Storer) *Service {
 	return &Service{store: store}
 }
 
@@ -37,7 +38,58 @@ func (s *Service) GetReadingProgress(bookID string) (*ReadingProgress, error) {
 	return &progress, nil
 }
 
-func (s *Service) GetReviews(bookID string) []Review { return s.store.Reviews(bookID) }
+func (s *Service) SaveReadingProgress(bookID string, currentPage int) (*ReadingProgress, error) {
+	book, err := s.GetBookByID(bookID)
+	if err != nil {
+		return nil, err
+	}
+	if currentPage < 0 || currentPage > book.Pages {
+		return nil, ErrInvalidInput
+	}
+	if err := s.store.SetReadingProgress(bookID, currentPage, book.Pages); err != nil {
+		return nil, err
+	}
+	progress, ok := s.store.ReadingProgress(bookID)
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return &progress, nil
+}
+
+func (s *Service) GetReviews(bookID string, page int, limit int) ([]Review, int) {
+	return s.store.Reviews(bookID, page, limit)
+}
+
+func (s *Service) SaveReview(bookID string, rating float32, text string) (Review, error) {
+	if _, err := s.GetBookByID(bookID); err != nil {
+		return Review{}, err
+	}
+	if rating < 0 || rating > 5 {
+		return Review{}, ErrInvalidInput
+	}
+	if strings.TrimSpace(text) == "" {
+		return Review{}, ErrInvalidInput
+	}
+	profile := s.store.OwnProfile()
+	review := Review{
+		ID:           bookID + "-user-review",
+		UserID:       "me",
+		ReviewerName: profile.Name,
+		Rating:       rating,
+		Text:         text,
+		Likes:        0,
+		LikedBy:      []string{},
+		CreatedAt:    time.Now().Format("Jan 02, 2006"),
+	}
+	if err := s.store.SaveReview(bookID, review); err != nil {
+		return Review{}, err
+	}
+	return review, nil
+}
+
+func (s *Service) ToggleLike(bookID string, reviewID string) (Review, error) {
+	return s.store.ToggleLike("me", reviewID)
+}
 
 func (s *Service) GetAuthors() []Author { return s.store.Authors() }
 
@@ -94,27 +146,58 @@ func (s *Service) GetHome() Home {
 
 func (s *Service) GetOwnLibrary() Library {
 	profile := s.store.OwnProfile()
+
+	var currentBook CurrentBook
+	var highestProgress float32 = -1
+
+	for _, lb := range profile.PublicLibrary {
+		progress, ok := s.store.ReadingProgress(lb.ID)
+		if !ok {
+			continue
+		}
+		ratio := float32(progress.CurrentPage) / float32(progress.TotalPages)
+		if ratio >= 1.0 {
+			continue
+		}
+		if ratio > highestProgress {
+			highestProgress = ratio
+			book, _ := s.store.BookByID(lb.ID)
+			currentBook = CurrentBook{
+				ID:            lb.ID,
+				Title:         lb.Title,
+				Author:        book.Author,
+				Page:          progress.CurrentPage,
+				TotalPages:    progress.TotalPages,
+				Progress:      ratio,
+				CoverImageURL: lb.CoverImageURL,
+			}
+		}
+	}
+
 	return Library{
-		Title:       "My Library",
-		Subtitle:    "Your personal collection, current read, and completed shelf.",
-		Avatar:      profile.Avatar,
-		CurrentBook: profile.CurrentBook,
-		ReadingBooks: []LibraryBook{
-			{Title: profile.CurrentBook.Title, CoverImageURL: profile.CurrentBook.CoverImageURL},
-			{Title: "Foucault's Pendulum", CoverImageURL: coverURL("9780156032971")},
-			{Title: "If on a winter's night a traveler", CoverImageURL: coverURL("9780156439619")},
-		},
+		Title:          "My Library",
+		Subtitle:       "Your personal collection, current read, and completed shelf.",
+		Avatar:         profile.Avatar,
+		CurrentBook:    currentBook,
+		ReadingBooks:   profile.PublicLibrary,
 		ShelfBooks:     profile.PublicLibrary,
 		CompletedBooks: profile.CompletedBooks,
-		ReadHistory: []ReadBook{
-			{Title: "Beloved", Author: "Toni Morrison", StartedOn: "Jan 12, 2026", FinishedOn: "Jan 29, 2026", PersonalRating: 5, CoverAccentHex: 0xFF82645A},
-			{Title: "Pale Fire", Author: "Vladimir Nabokov", StartedOn: "Feb 02, 2026", FinishedOn: "Feb 18, 2026", PersonalRating: 4, CoverAccentHex: 0xFF627A92},
-			{Title: "The Waves", Author: "Virginia Woolf", StartedOn: "Mar 03, 2026", FinishedOn: "Mar 21, 2026", PersonalRating: 5, CoverAccentHex: 0xFF6C8A80},
-			{Title: "Never Let Me Go", Author: "Kazuo Ishiguro", StartedOn: "Apr 01, 2026", FinishedOn: "Apr 14, 2026", PersonalRating: 4, CoverAccentHex: 0xFF536E8A},
-			{Title: "Fictions", Author: "Jorge Luis Borges", StartedOn: "Apr 20, 2026", FinishedOn: "May 03, 2026", PersonalRating: 5, CoverAccentHex: 0xFF8C6B5A},
-			{Title: "The Secret History", Author: "Donna Tartt", StartedOn: "May 08, 2026", FinishedOn: "May 28, 2026", PersonalRating: 5, CoverAccentHex: 0xFF6E918B},
-		},
+		ReadHistory:    []ReadBook{},
 	}
+}
+
+func (s *Service) AddBookToLibrary(bookID string) error {
+	if _, err := s.GetBookByID(bookID); err != nil {
+		return err
+	}
+	return s.store.AddBookToLibrary(bookID)
+}
+
+func (s *Service) RemoveBookFromLibrary(bookID string) error {
+	if _, err := s.GetBookByID(bookID); err != nil {
+		return err
+	}
+	return s.store.RemoveBookFromLibrary(bookID)
 }
 
 func (s *Service) UpdateOwnProfile(request UpdateProfileRequest) (Profile, error) {
