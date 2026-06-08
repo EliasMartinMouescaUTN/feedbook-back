@@ -22,5 +22,8 @@ func NewRouter(service *feedbook.Service) http.Handler {
 	mux.HandleFunc("/profile/public", handler.handlePublicProfile)
 	mux.HandleFunc("/stats", handler.handleStats)
 	mux.HandleFunc("/notifications", handler.handleNotifications)
+	mux.HandleFunc("/push/register", handler.handlePushRegister)
+	mux.HandleFunc("/push/send", handler.handlePushSend)
+	mux.HandleFunc("/push/tokens", handler.handlePushTokens)
 	return mux
 }

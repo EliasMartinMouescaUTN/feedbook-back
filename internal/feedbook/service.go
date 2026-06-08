@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -11,11 +12,25 @@ var ErrNotFound = errors.New("not found")
 var ErrInvalidInput = errors.New("invalid input")
 
 type Service struct {
-	store Storer
+	store      Storer
+	pushSender PushSender
+	pushTokens map[string]string
+	pushMu     sync.RWMutex
 }
 
 func NewService(store Storer) *Service {
-	return &Service{store: store}
+	return &Service{
+		store:      store,
+		pushTokens: make(map[string]string),
+	}
+}
+
+type PushSender interface {
+	Send(token string, title string, body string, data map[string]string) (string, error)
+}
+
+func (s *Service) SetPushSender(sender PushSender) {
+	s.pushSender = sender
 }
 
 func (s *Service) GetBooks() []Book { return s.store.Books() }
@@ -91,20 +106,13 @@ func (s *Service) ToggleLike(bookID string, reviewID string) (Review, error) {
 	return s.store.ToggleLike("me", reviewID)
 }
 
-func (s *Service) GetAuthors() []Author {
-	authors := s.store.Authors()
-	for i, a := range authors {
-		authors[i].IsFollowing = s.store.IsFollowing("me", a.ID)
-	}
-	return authors
-}
+func (s *Service) GetAuthors() []Author { return s.store.Authors() }
 
 func (s *Service) GetAuthorByID(authorID string) (Author, error) {
 	author, ok := s.store.AuthorByID(authorID)
 	if !ok {
 		return Author{}, ErrNotFound
 	}
-	author.IsFollowing = s.store.IsFollowing("me", authorID)
 	return author, nil
 }
 
@@ -247,6 +255,79 @@ func (s *Service) UpdateOwnProfile(request UpdateProfileRequest) (Profile, error
 func (s *Service) GetStats() Stats { return s.store.Stats() }
 
 func (s *Service) GetNotifications() Notifications { return s.store.Notifications() }
+
+func (s *Service) RegisterPushToken(token string, platform string) error {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return ErrInvalidInput
+	}
+	platform = strings.TrimSpace(platform)
+	if platform == "" {
+		platform = "android"
+	}
+
+	s.pushMu.Lock()
+	defer s.pushMu.Unlock()
+	s.pushTokens[token] = platform
+	return nil
+}
+
+func (s *Service) PushTokens() []PushTokenInfo {
+	s.pushMu.RLock()
+	defer s.pushMu.RUnlock()
+
+	tokens := make([]PushTokenInfo, 0, len(s.pushTokens))
+	for token, platform := range s.pushTokens {
+		tokens = append(tokens, PushTokenInfo{
+			Token:    token,
+			Platform: platform,
+		})
+	}
+	return tokens
+}
+
+func (s *Service) SendPushNotification(request SendPushRequest) (SendPushResponse, error) {
+	title := strings.TrimSpace(request.Title)
+	body := strings.TrimSpace(request.Body)
+	if title == "" || body == "" {
+		return SendPushResponse{}, ErrInvalidInput
+	}
+	if s.pushSender == nil {
+		return SendPushResponse{}, ErrPushSenderUnavailable
+	}
+
+	tokens := s.pushTargets(request.Token)
+	if len(tokens) == 0 {
+		return SendPushResponse{Sent: 0, Failed: 0, Message: "no registered push tokens"}, nil
+	}
+
+	response := SendPushResponse{IDs: []string{}, Errors: []string{}}
+	for _, token := range tokens {
+		id, err := s.pushSender.Send(token, title, body, request.Data)
+		if err != nil {
+			response.Failed++
+			response.Errors = append(response.Errors, err.Error())
+			continue
+		}
+		response.Sent++
+		response.IDs = append(response.IDs, id)
+	}
+	return response, nil
+}
+
+func (s *Service) pushTargets(explicitToken string) []string {
+	if token := strings.TrimSpace(explicitToken); token != "" {
+		return []string{token}
+	}
+
+	s.pushMu.RLock()
+	defer s.pushMu.RUnlock()
+	tokens := make([]string, 0, len(s.pushTokens))
+	for token := range s.pushTokens {
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
 
 func dailyGoalLabel(goal *ReadingGoal) string {
 	if goal == nil {

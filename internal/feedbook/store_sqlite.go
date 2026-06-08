@@ -79,7 +79,7 @@ func (s *SQLiteStore) seed() {
 
 	for _, b := range sampleBooks() {
 		s.db.Create(&BookModel{
-			ID: b.ID, AuthorID: b.AuthorID, Title: b.Title, Author: b.Author,
+			ID: b.ID, Title: b.Title, Author: b.Author,
 			Description: b.Description, CoverImageURL: b.CoverImageURL,
 			Pages: b.Pages, ISBN: b.ISBN, Genre: b.Genre,
 			Language: b.Language, Published: b.Published,
@@ -91,7 +91,7 @@ func (s *SQLiteStore) seed() {
 			ID: u.ID, Name: u.Name, Handle: u.Handle, Bio: u.Bio,
 			AvatarImageURL: u.AvatarImageURL, AvatarTopColorHex: u.AvatarTopColorHex,
 			AvatarBottomColorHex: u.AvatarBottomColorHex,
-			FollowersLabel: u.FollowersLabel, BooksReadLabel: u.BooksReadLabel,
+			FollowersLabel:       u.FollowersLabel, BooksReadLabel: u.BooksReadLabel,
 		})
 	}
 
@@ -139,7 +139,7 @@ func (s *SQLiteStore) seed() {
 			ID: n.ID, Type: n.Type, Timestamp: n.Timestamp,
 			ActorName: n.Actor.Name, ActorTopHex: n.Actor.AvatarTopColorHex,
 			ActorBottomHex: n.Actor.AvatarBottomColorHex,
-			FallbackText: n.FallbackText,
+			FallbackText:   n.FallbackText,
 		}
 		if n.Book != nil {
 			title := n.Book.Title
@@ -166,13 +166,13 @@ func (s *SQLiteStore) seedProfile(profileType string, p Profile) {
 		BottomColorHex: p.Avatar.BottomColorHex,
 		AvatarPresetID: p.Avatar.AvatarPresetID,
 		PresetImageURL: p.Avatar.PresetImageURL,
-		ImageURI: p.Avatar.ImageURI,
+		ImageURI:       p.Avatar.ImageURI,
 	})
 
 	if p.ReadingGoal != nil {
 		s.db.Create(&ReadingGoalModel{
-			ProfileID: profileModel.ID,
-			TargetPagesPerDay: p.ReadingGoal.TargetPagesPerDay,
+			ProfileID:                 profileModel.ID,
+			TargetPagesPerDay:         p.ReadingGoal.TargetPagesPerDay,
 			CurrentAveragePagesPerDay: p.ReadingGoal.CurrentAveragePagesPerDay,
 		})
 	}
@@ -192,7 +192,7 @@ func (s *SQLiteStore) seedProfile(profileType string, p Profile) {
 		ProfileID: profileModel.ID, BookID: p.CurrentBook.ID,
 		Title: p.CurrentBook.Title, Author: p.CurrentBook.Author,
 		Page: p.CurrentBook.Page, TotalPages: p.CurrentBook.TotalPages,
-		Progress: p.CurrentBook.Progress,
+		Progress:      p.CurrentBook.Progress,
 		CoverImageURL: p.CurrentBook.CoverImageURL,
 	})
 
@@ -250,13 +250,13 @@ func (s *SQLiteStore) seedStats(profileType string, st Stats) {
 		for _, ax := range rs.Axes {
 			s.db.Create(&RadarAxisModel{
 				RadarSectionID: radarModel.ID,
-				Label: ax.Label, Value: ax.Value,
+				Label:          ax.Label, Value: ax.Value,
 			})
 		}
 		for _, rk := range rs.Ranking {
 			s.db.Create(&RankingItemModel{
 				RadarSectionID: radarModel.ID,
-				Rank: rk.Rank, Label: rk.Label,
+				Rank:           rk.Rank, Label: rk.Label,
 			})
 		}
 	}
@@ -473,11 +473,11 @@ func (s *SQLiteStore) SetOwnProfile(p Profile) {
 	})
 
 	s.db.Model(&AvatarModel{}).Where("profile_id = ?", m.ID).Updates(map[string]any{
-		"top_color_hex": p.Avatar.TopColorHex,
+		"top_color_hex":    p.Avatar.TopColorHex,
 		"bottom_color_hex": p.Avatar.BottomColorHex,
 		"avatar_preset_id": p.Avatar.AvatarPresetID,
 		"preset_image_url": p.Avatar.PresetImageURL,
-		"image_uri": p.Avatar.ImageURI,
+		"image_uri":        p.Avatar.ImageURI,
 	})
 
 	if p.ReadingGoal != nil {
@@ -485,13 +485,13 @@ func (s *SQLiteStore) SetOwnProfile(p Profile) {
 		err := s.db.Where("profile_id = ?", m.ID).First(&goal).Error
 		if err != nil {
 			s.db.Create(&ReadingGoalModel{
-				ProfileID: m.ID,
-				TargetPagesPerDay: p.ReadingGoal.TargetPagesPerDay,
+				ProfileID:                 m.ID,
+				TargetPagesPerDay:         p.ReadingGoal.TargetPagesPerDay,
 				CurrentAveragePagesPerDay: p.ReadingGoal.CurrentAveragePagesPerDay,
 			})
 		} else {
 			s.db.Model(&goal).Updates(map[string]any{
-				"target_pages_per_day": p.ReadingGoal.TargetPagesPerDay,
+				"target_pages_per_day":          p.ReadingGoal.TargetPagesPerDay,
 				"current_average_pages_per_day": p.ReadingGoal.CurrentAveragePagesPerDay,
 			})
 		}
@@ -526,8 +526,8 @@ func (s *SQLiteStore) Notifications() Notifications {
 		n := NotificationEntry{
 			ID: m.ID, Type: m.Type, Timestamp: m.Timestamp,
 			Actor: NotificationActor{
-				Name: m.ActorName,
-				AvatarTopColorHex: m.ActorTopHex,
+				Name:                 m.ActorName,
+				AvatarTopColorHex:    m.ActorTopHex,
 				AvatarBottomColorHex: m.ActorBottomHex,
 			},
 			FallbackText: m.FallbackText,
@@ -549,7 +549,7 @@ func (s *SQLiteStore) Books() []Book {
 	result := make([]Book, len(models))
 	for i, m := range models {
 		result[i] = Book{
-			ID: m.ID, AuthorID: m.AuthorID, Title: m.Title, Author: m.Author,
+			ID: m.ID, Title: m.Title, Author: m.Author,
 			Description: m.Description, CoverImageURL: m.CoverImageURL,
 			Pages: m.Pages, ISBN: m.ISBN, Genre: m.Genre,
 			Language: m.Language, Published: m.Published,
@@ -564,7 +564,7 @@ func (s *SQLiteStore) BookByID(bookID string) (Book, bool) {
 		return Book{}, false
 	}
 	return Book{
-		ID: m.ID, AuthorID: m.AuthorID, Title: m.Title, Author: m.Author,
+		ID: m.ID, Title: m.Title, Author: m.Author,
 		Description: m.Description, CoverImageURL: m.CoverImageURL,
 		Pages: m.Pages, ISBN: m.ISBN, Genre: m.Genre,
 		Language: m.Language, Published: m.Published,
@@ -578,11 +578,11 @@ func (s *SQLiteStore) ExploreUsers() []ExploreUser {
 	for i, m := range models {
 		result[i] = ExploreUser{
 			ID: m.ID, Name: m.Name, Handle: m.Handle, Bio: m.Bio,
-			AvatarImageURL: m.AvatarImageURL,
-			AvatarTopColorHex: m.AvatarTopColorHex,
+			AvatarImageURL:       m.AvatarImageURL,
+			AvatarTopColorHex:    m.AvatarTopColorHex,
 			AvatarBottomColorHex: m.AvatarBottomColorHex,
-			FollowersLabel: m.FollowersLabel,
-			BooksReadLabel: m.BooksReadLabel,
+			FollowersLabel:       m.FollowersLabel,
+			BooksReadLabel:       m.BooksReadLabel,
 		}
 	}
 	return result
@@ -706,7 +706,7 @@ func (s *SQLiteStore) Authors() []Author {
 		bookDTOs := make([]Book, len(m.Books))
 		for j, b := range m.Books {
 			bookDTOs[j] = Book{
-				ID: b.ID, AuthorID: b.AuthorID, Title: b.Title, Author: b.Author,
+				ID: b.ID, Title: b.Title, Author: b.Author,
 				Description: b.Description, CoverImageURL: b.CoverImageURL,
 				Pages: b.Pages, ISBN: b.ISBN, Genre: b.Genre,
 				Language: b.Language, Published: b.Published,
@@ -730,7 +730,7 @@ func (s *SQLiteStore) AuthorByID(authorID string) (Author, bool) {
 	bookDTOs := make([]Book, len(m.Books))
 	for j, b := range m.Books {
 		bookDTOs[j] = Book{
-			ID: b.ID, AuthorID: b.AuthorID, Title: b.Title, Author: b.Author,
+			ID: b.ID, Title: b.Title, Author: b.Author,
 			Description: b.Description, CoverImageURL: b.CoverImageURL,
 			Pages: b.Pages, ISBN: b.ISBN, Genre: b.Genre,
 			Language: b.Language, Published: b.Published,
@@ -742,17 +742,6 @@ func (s *SQLiteStore) AuthorByID(authorID string) (Author, bool) {
 		Description: m.Description, Biography: m.Biography,
 		ImageURL: m.ImageURL, Books: bookDTOs, Followers: m.Followers,
 	}, true
-}
-
-func (s *SQLiteStore) IsFollowing(userID string, authorID string) bool {
-	var profile ProfileModel
-	s.db.Where("type = ?", "own").First(&profile)
-
-	var count int64
-	s.db.Model(&FollowedAuthorModel{}).
-		Where("profile_id = ? AND author_id = ?", profile.ID, authorID).
-		Count(&count)
-	return count > 0
 }
 
 func (s *SQLiteStore) ToggleFollow(authorID string) bool {
@@ -792,16 +781,6 @@ func (s *SQLiteStore) AddBookToLibrary(bookID string) error {
 		Title:         book.Title,
 		CoverImageURL: book.CoverImageURL,
 	})
-	var progressCount int64
-	s.db.Model(&ReadingProgressModel{}).Where("book_id = ?", book.ID).Count(&progressCount)
-	if progressCount == 0 {
-		s.db.Create(&ReadingProgressModel{
-			BookID:      book.ID,
-			CurrentPage: 0,
-			TotalPages:  book.Pages,
-			UpdatedAt:   time.Now().Format("02/01/2006"),
-		})
-	}
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,8 +18,10 @@ import (
 )
 
 const (
-	defaultAddr = "127.0.0.1:8080"
-	jwtSecret   = "feedbook-local-secret"
+	defaultAddr              = "127.0.0.1:8080"
+	defaultFirebaseCredsFile = "firebase-service-account.json"
+	defaultFirebaseProjectID = "feedbook-9132b"
+	jwtSecret                = "feedbook-local-secret"
 )
 
 type loginRequest struct {
@@ -53,9 +57,20 @@ func main() {
 		store = feedbook.NewMemoryStore()
 	}
 
+	service := feedbook.NewService(store)
+	if sender, err := feedbook.NewFirebasePushSender(
+		context.Background(),
+		resolveFirebaseCredentialsFile(),
+		resolveFirebaseProjectID(),
+	); err != nil {
+		log.Printf("Firebase push sender disabled: %v", err)
+	} else {
+		service.SetPushSender(sender)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/login", handleLogin)
-	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(store))))
+	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(service)))
 
 	addr := resolveAddr(os.Getenv("FEEDBOOK_ADDR"))
 
@@ -77,6 +92,29 @@ func resolveAddr(raw string) string {
 		return defaultAddr
 	}
 	return addr
+}
+
+func resolveFirebaseProjectID() string {
+	if projectID := strings.TrimSpace(os.Getenv("FIREBASE_PROJECT_ID")); projectID != "" {
+		return projectID
+	}
+	if projectID := strings.TrimSpace(os.Getenv("GOOGLE_CLOUD_PROJECT")); projectID != "" {
+		return projectID
+	}
+	return defaultFirebaseProjectID
+}
+
+func resolveFirebaseCredentialsFile() string {
+	if credentialsFile := strings.TrimSpace(os.Getenv("FIREBASE_CREDENTIALS_FILE")); credentialsFile != "" {
+		return credentialsFile
+	}
+	if _, err := os.Stat(defaultFirebaseCredsFile); err == nil {
+		return defaultFirebaseCredsFile
+	}
+	if matches, err := filepath.Glob("*firebase-adminsdk*.json"); err == nil && len(matches) > 0 {
+		return matches[0]
+	}
+	return ""
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {

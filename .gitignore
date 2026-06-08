@@ -4,3 +4,6 @@
 *.out
 *.exe
 feedbook.db
+firebase-service-account.json
+*service-account*.json
+*firebase-adminsdk*.json

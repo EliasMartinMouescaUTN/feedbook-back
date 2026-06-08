@@ -3,6 +3,7 @@ package feedbookhttp
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -246,6 +247,64 @@ func (h *Handler) handleNotifications(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.service.GetNotifications())
 }
 
+func (h *Handler) handlePushRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, feedbook.ErrorResponse{Error: "method not allowed"})
+		return
+	}
+
+	var request feedbook.RegisterPushTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "invalid json body"})
+		return
+	}
+	if err := h.service.RegisterPushToken(request.Token, request.Platform); err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	log.Printf("registered push token platform=%s suffix=%s", request.Platform, tokenSuffix(request.Token))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) handlePushTokens(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, feedbook.ErrorResponse{Error: "method not allowed"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"count":  len(h.service.PushTokens()),
+		"tokens": h.service.PushTokens(),
+	})
+}
+
+func (h *Handler) handlePushSend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, feedbook.ErrorResponse{Error: "method not allowed"})
+		return
+	}
+
+	var request feedbook.SendPushRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "invalid json body"})
+		return
+	}
+	response, err := h.service.SendPushNotification(request)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func tokenSuffix(token string) string {
+	token = strings.TrimSpace(token)
+	if len(token) <= 8 {
+		return token
+	}
+	return token[len(token)-8:]
+}
+
 func writeServiceResponse(w http.ResponseWriter, payload any, err error) {
 	if err != nil {
 		writeServiceError(w, err)
@@ -260,6 +319,8 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusNotFound, feedbook.ErrorResponse{Error: "not found"})
 	case errors.Is(err, feedbook.ErrInvalidInput):
 		writeJSON(w, http.StatusBadRequest, feedbook.ErrorResponse{Error: "invalid request"})
+	case errors.Is(err, feedbook.ErrPushSenderUnavailable):
+		writeJSON(w, http.StatusServiceUnavailable, feedbook.ErrorResponse{Error: "push sender unavailable"})
 	default:
 		writeJSON(w, http.StatusInternalServerError, feedbook.ErrorResponse{Error: "internal server error"})
 	}

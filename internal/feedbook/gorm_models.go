@@ -4,34 +4,34 @@ import "gorm.io/gorm"
 
 type ProfileModel struct {
 	gorm.Model
-	Type           string `gorm:"uniqueIndex:idx_profile_type;size:10"`
-	Name           string
-	Handle         string
-	Quote          string
-	CompletedBooks int
-	Avatar         AvatarModel           `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
-	ReadingGoal    *ReadingGoalModel     `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
-	ReadingStreak  *ReadingStreakModel   `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
-	CurrentBook    *CurrentBookModel     `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
-	QueuedBooks    []QueuedBookModel     `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
-	ProfileStats   []ProfileStatModel    `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
-	PublicLibrary  []PublicLibraryModel  `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	Type            string `gorm:"uniqueIndex:idx_profile_type;size:10"`
+	Name            string
+	Handle          string
+	Quote           string
+	CompletedBooks  int
+	Avatar          AvatarModel           `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	ReadingGoal     *ReadingGoalModel     `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	ReadingStreak   *ReadingStreakModel   `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	CurrentBook     *CurrentBookModel     `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	QueuedBooks     []QueuedBookModel     `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	ProfileStats    []ProfileStatModel    `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
+	PublicLibrary   []PublicLibraryModel  `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
 	FeaturedReviews []FeaturedReviewModel `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE"`
 }
 
 type AvatarModel struct {
 	gorm.Model
-	ProfileID        uint
-	TopColorHex      int64
-	BottomColorHex   int64
-	AvatarPresetID   string
-	PresetImageURL   string
-	ImageURI         string
+	ProfileID      uint
+	TopColorHex    int64
+	BottomColorHex int64
+	AvatarPresetID string
+	PresetImageURL string
+	ImageURI       string
 }
 
 type ReadingGoalModel struct {
 	gorm.Model
-	ProfileID                  uint `gorm:"uniqueIndex"`
+	ProfileID                 uint `gorm:"uniqueIndex"`
 	TargetPagesPerDay         int
 	CurrentAveragePagesPerDay int
 }
@@ -99,14 +99,14 @@ type FeaturedReviewModel struct {
 
 type StatsModel struct {
 	gorm.Model
-	ProfileID       uint `gorm:"uniqueIndex"`
-	Title           string
-	Subtitle        string
-	HeatmapMonths   string `gorm:"type:text"`
-	HeatmapRows     string `gorm:"type:text"`
-	Metrics         []StatsMetricModel   `gorm:"foreignKey:StatsID;constraint:OnDelete:CASCADE"`
-	RadarSections   []RadarSectionModel  `gorm:"foreignKey:StatsID;constraint:OnDelete:CASCADE"`
-	HeatmapEntries  []HeatmapEntryModel  `gorm:"foreignKey:StatsID;constraint:OnDelete:CASCADE"`
+	ProfileID      uint `gorm:"uniqueIndex"`
+	Title          string
+	Subtitle       string
+	HeatmapMonths  string              `gorm:"type:text"`
+	HeatmapRows    string              `gorm:"type:text"`
+	Metrics        []StatsMetricModel  `gorm:"foreignKey:StatsID;constraint:OnDelete:CASCADE"`
+	RadarSections  []RadarSectionModel `gorm:"foreignKey:StatsID;constraint:OnDelete:CASCADE"`
+	HeatmapEntries []HeatmapEntryModel `gorm:"foreignKey:StatsID;constraint:OnDelete:CASCADE"`
 }
 
 type StatsMetricModel struct {
@@ -118,10 +118,10 @@ type StatsMetricModel struct {
 
 type RadarSectionModel struct {
 	gorm.Model
-	StatsID     uint
-	Mode        string
-	Axes        []RadarAxisModel   `gorm:"foreignKey:RadarSectionID;constraint:OnDelete:CASCADE"`
-	Ranking     []RankingItemModel `gorm:"foreignKey:RadarSectionID;constraint:OnDelete:CASCADE"`
+	StatsID uint
+	Mode    string
+	Axes    []RadarAxisModel   `gorm:"foreignKey:RadarSectionID;constraint:OnDelete:CASCADE"`
+	Ranking []RankingItemModel `gorm:"foreignKey:RadarSectionID;constraint:OnDelete:CASCADE"`
 }
 
 type RadarAxisModel struct {
@@ -148,7 +148,6 @@ type HeatmapEntryModel struct {
 
 type BookModel struct {
 	ID            string `gorm:"primaryKey"`
-	AuthorID      string
 	Title         string
 	Author        string
 	Description   string
@@ -231,6 +230,6 @@ type NotificationEntryModel struct {
 }
 
 type FollowedAuthorModel struct {
-	ProfileID uint `gorm:"primaryKey"`
+	ProfileID uint   `gorm:"primaryKey"`
 	AuthorID  string `gorm:"primaryKey"`
 }

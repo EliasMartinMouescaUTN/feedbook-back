@@ -218,12 +218,6 @@ func (s *Store) AuthorByID(authorID string) (Author, bool) {
 	return Author{}, false
 }
 
-func (s *Store) IsFollowing(userID string, authorID string) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.followedAuthors[authorID]
-}
-
 func (s *Store) ToggleFollow(authorID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -260,14 +254,6 @@ func (s *Store) AddBookToLibrary(bookID string) error {
 		Title:         book.Title,
 		CoverImageURL: book.CoverImageURL,
 	})
-	if _, exists := s.readingProgress[bookID]; !exists {
-		s.readingProgress[bookID] = ReadingProgress{
-			BookID:      bookID,
-			CurrentPage: 0,
-			TotalPages:  book.Pages,
-			UpdatedAt:   time.Now().Format("02/01/2006"),
-		}
-	}
 	return nil
 }
 
@@ -374,7 +360,7 @@ func samplePublicProfile(presets []AvatarPreset) Profile {
 			Progress:      0.61,
 			CoverImageURL: coverURL("9780156001311"),
 		},
-		UpNextBooks: []QueuedBook{},
+		UpNextBooks:    []QueuedBook{},
 		CompletedBooks: 58,
 		ProfileStats: []ProfileStat{
 			{Label: "Reviews", Value: "128"},
@@ -434,9 +420,9 @@ func sampleNotifications() Notifications {
 
 func sampleBooks() []Book {
 	return []Book{
-		{ID: "1", AuthorID: "a1", Title: "The Secret History", Author: "Donna Tartt", CoverImageURL: coverURL("9781400031702"), Genre: "Fiction", Description: "A group of classics students at a small Vermont college become entangled in a murder.", Pages: 559, Language: "English", Published: "27/05/1987", ISBN: "987698762"},
-		{ID: "2", AuthorID: "a2", Title: "The Name of the Rose", Author: "Umberto Eco", CoverImageURL: coverURL("9780156001311"), Genre: "Mystery", Description: "A medieval monk investigates a series of mysterious deaths in an Italian abbey.", Pages: 242, Language: "English", Published: "27/05/1927", ISBN: "987618762"},
-		{ID: "3", AuthorID: "a3", Title: "Beloved", Author: "Toni Morrison", CoverImageURL: coverURL("9781400033416"), Genre: "Fiction", Description: "A former enslaved woman is haunted by the ghost of her daughter.", Pages: 559, Language: "English", Published: "27/05/1986", ISBN: "987618763"},
+		{ID: "1", Title: "The Secret History", Author: "Donna Tartt", CoverImageURL: coverURL("9781400031702"), Genre: "Fiction", Description: "A group of classics students at a small Vermont college become entangled in a murder.", Pages: 559, Language: "English", Published: "27/05/1987", ISBN: "987698762"},
+		{ID: "2", Title: "The Name of the Rose", Author: "Umberto Eco", CoverImageURL: coverURL("9780156001311"), Genre: "Mystery", Description: "A medieval monk investigates a series of mysterious deaths in an Italian abbey.", Pages: 242, Language: "English", Published: "27/05/1927", ISBN: "987618762"},
+		{ID: "3", Title: "Beloved", Author: "Toni Morrison", CoverImageURL: coverURL("9781400033416"), Genre: "Fiction", Description: "A former enslaved woman is haunted by the ghost of her daughter.", Pages: 559, Language: "English", Published: "27/05/1986", ISBN: "987618763"},
 	}
 }
 
@@ -472,9 +458,9 @@ func sampleReviews() map[string][]Review {
 
 func sampleAuthors(books []Book) []Author {
 	return []Author{
-		{ID: "a1", Name: "Donna Tartt", BirthYear: 1963, Nationality: "American", Description: "Pulitzer Prize-winning author known for her intricate literary fiction.", Biography: "Donna Tartt was born in Greenwood, Mississippi in 1963. She studied at the University of Mississippi and Bennington College, where she began writing her debut novel. Her first book, The Secret History, was published in 1992 to widespread acclaim. Known for her meticulous prose and infrequent output, she spent a decade on each of her novels. Her third novel, The Goldfinch, won the Pulitzer Prize for Fiction in 2014.", ImageURL: avatarURL("donna-tartt"), Books: filterBooks(books, "1"), Followers: 14200},
-		{ID: "a2", Name: "Umberto Eco", BirthYear: 1932, DeathYear: intPtr(2016), Nationality: "Italian", Description: "Philosopher, semiotician and novelist renowned for his erudite fiction.", Biography: "Umberto Eco was born in Alessandria, Italy in 1932. A professor of semiotics at the University of Bologna, he became one of Italy's most celebrated intellectuals. His debut novel, The Name of the Rose, published in 1980, became an international bestseller and established him as a major literary figure. His works blend medieval history, philosophy, and literary theory into dense, rewarding narratives.", ImageURL: avatarURL("umberto-eco"), Books: filterBooks(books, "2"), Followers: 21500},
-		{ID: "a3", Name: "Toni Morrison", BirthYear: 1931, DeathYear: intPtr(2019), Nationality: "American", Description: "Nobel Prize-winning author whose work explores the African American experience.", Biography: "Toni Morrison was born Chloe Ardelia Wofford in Lorain, Ohio in 1931. She studied at Howard University and Cornell, and worked as an editor at Random House before becoming a celebrated novelist. Her novel Beloved, published in 1987, won the Pulitzer Prize and later the Nobel Prize in Literature in 1993. Her prose, lyrical and unflinching, redefined American literature.", ImageURL: avatarURL("toni-morrison"), Books: filterBooks(books, "3"), Followers: 38900},
+		{ID: "a1", Name: "Donna Tartt", BirthYear: 1963, Nationality: "American", Description: "Pulitzer Prize-winning author known for her intricate literary fiction.", Biography: "Donna Tartt was born in Greenwood, Mississippi in 1963. She studied at the University of Mississippi and Bennington College, where she began writing her debut novel. Her first book, The Secret History, was published in 1992 to widespread acclaim. Known for her meticulous prose and infrequent output, she spent a decade on each of her novels. Her third novel, The Goldfinch, won the Pulitzer Prize for Fiction in 2014.", Books: filterBooks(books, "1"), Followers: 14200},
+		{ID: "a2", Name: "Umberto Eco", BirthYear: 1932, DeathYear: intPtr(2016), Nationality: "Italian", Description: "Philosopher, semiotician and novelist renowned for his erudite fiction.", Biography: "Umberto Eco was born in Alessandria, Italy in 1932. A professor of semiotics at the University of Bologna, he became one of Italy's most celebrated intellectuals. His debut novel, The Name of the Rose, published in 1980, became an international bestseller and established him as a major literary figure. His works blend medieval history, philosophy, and literary theory into dense, rewarding narratives.", Books: filterBooks(books, "2"), Followers: 21500},
+		{ID: "a3", Name: "Toni Morrison", BirthYear: 1931, DeathYear: intPtr(2019), Nationality: "American", Description: "Nobel Prize-winning author whose work explores the African American experience.", Biography: "Toni Morrison was born Chloe Ardelia Wofford in Lorain, Ohio in 1931. She studied at Howard University and Cornell, and worked as an editor at Random House before becoming a celebrated novelist. Her novel Beloved, published in 1987, won the Pulitzer Prize and later the Nobel Prize in Literature in 1993. Her prose, lyrical and unflinching, redefined American literature.", Books: filterBooks(books, "3"), Followers: 38900},
 	}
 }
 

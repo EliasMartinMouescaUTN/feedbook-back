@@ -14,6 +14,12 @@ func newTestRouter() http.Handler {
 	return NewRouter(feedbook.NewService(feedbook.NewMemoryStore()))
 }
 
+func newPushTestRouter(sender feedbook.PushSender) http.Handler {
+	service := feedbook.NewService(feedbook.NewMemoryStore())
+	service.SetPushSender(sender)
+	return NewRouter(service)
+}
+
 func TestBooksEndpointReturnsData(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/books", nil)
 	rec := httptest.NewRecorder()
@@ -136,6 +142,103 @@ func TestMissingBookReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestPushRegisterAcceptsToken(t *testing.T) {
+	body := bytes.NewReader([]byte(`{"token":"fcm-token","platform":"android"}`))
+	req := httptest.NewRequest(http.MethodPost, "/push/register", body)
+	rec := httptest.NewRecorder()
+
+	newTestRouter().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status 204, got %d", rec.Code)
+	}
+}
+
+func TestPushSendUsesRegisteredTokens(t *testing.T) {
+	sender := &fakePushSender{}
+	router := newPushTestRouter(sender)
+
+	registerReq := httptest.NewRequest(
+		http.MethodPost,
+		"/push/register",
+		bytes.NewReader([]byte(`{"token":"fcm-token","platform":"android"}`)),
+	)
+	registerRec := httptest.NewRecorder()
+	router.ServeHTTP(registerRec, registerReq)
+	if registerRec.Code != http.StatusNoContent {
+		t.Fatalf("expected register status 204, got %d", registerRec.Code)
+	}
+
+	sendReq := httptest.NewRequest(
+		http.MethodPost,
+		"/push/send",
+		bytes.NewReader([]byte(`{"title":"FeedBook","body":"Nueva actividad"}`)),
+	)
+	sendRec := httptest.NewRecorder()
+	router.ServeHTTP(sendRec, sendReq)
+
+	if sendRec.Code != http.StatusOK {
+		t.Fatalf("expected send status 200, got %d", sendRec.Code)
+	}
+	if sender.token != "fcm-token" || sender.title != "FeedBook" || sender.body != "Nueva actividad" {
+		t.Fatalf("unexpected push send call: %+v", sender)
+	}
+
+	var response feedbook.SendPushResponse
+	if err := json.NewDecoder(sendRec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode push response: %v", err)
+	}
+	if response.Sent != 1 || response.Failed != 0 || len(response.IDs) != 1 {
+		t.Fatalf("unexpected push response: %+v", response)
+	}
+}
+
+func TestPushTokensReturnsRegisteredTokens(t *testing.T) {
+	router := newTestRouter()
+	registerReq := httptest.NewRequest(
+		http.MethodPost,
+		"/push/register",
+		bytes.NewReader([]byte(`{"token":"fcm-token","platform":"android"}`)),
+	)
+	registerRec := httptest.NewRecorder()
+	router.ServeHTTP(registerRec, registerReq)
+	if registerRec.Code != http.StatusNoContent {
+		t.Fatalf("expected register status 204, got %d", registerRec.Code)
+	}
+
+	tokensReq := httptest.NewRequest(http.MethodGet, "/push/tokens", nil)
+	tokensRec := httptest.NewRecorder()
+	router.ServeHTTP(tokensRec, tokensReq)
+
+	if tokensRec.Code != http.StatusOK {
+		t.Fatalf("expected tokens status 200, got %d", tokensRec.Code)
+	}
+
+	var response struct {
+		Count  int                      `json:"count"`
+		Tokens []feedbook.PushTokenInfo `json:"tokens"`
+	}
+	if err := json.NewDecoder(tokensRec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode tokens response: %v", err)
+	}
+	if response.Count != 1 || len(response.Tokens) != 1 || response.Tokens[0].Token != "fcm-token" {
+		t.Fatalf("unexpected tokens response: %+v", response)
+	}
+}
+
 func intPtr(v int) *int {
 	return &v
+}
+
+type fakePushSender struct {
+	token string
+	title string
+	body  string
+}
+
+func (s *fakePushSender) Send(token string, title string, body string, data map[string]string) (string, error) {
+	s.token = token
+	s.title = title
+	s.body = body
+	return "projects/feedbook/messages/test", nil
 }

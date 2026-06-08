@@ -2,7 +2,6 @@ package feedbook
 
 type Book struct {
 	ID            string `json:"id"`
-	AuthorID      string `json:"author_id"`
 	Title         string `json:"title"`
 	Author        string `json:"author"`
 	Description   string `json:"description"`
@@ -56,7 +55,6 @@ type Author struct {
 	ImageURL    string `json:"image_url,omitempty"`
 	Books       []Book `json:"books"`
 	Followers   int    `json:"followers"`
-	IsFollowing bool   `json:"is_following"`
 }
 
 type Home struct {
@@ -268,4 +266,29 @@ type NotificationBookSummary struct {
 
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+type RegisterPushTokenRequest struct {
+	Token    string `json:"token"`
+	Platform string `json:"platform"`
+}
+
+type SendPushRequest struct {
+	Title string            `json:"title"`
+	Body  string            `json:"body"`
+	Data  map[string]string `json:"data,omitempty"`
+	Token string            `json:"token,omitempty"`
+}
+
+type SendPushResponse struct {
+	Sent    int      `json:"sent"`
+	Failed  int      `json:"failed"`
+	Message string   `json:"message,omitempty"`
+	IDs     []string `json:"ids,omitempty"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+type PushTokenInfo struct {
+	Token    string `json:"token"`
+	Platform string `json:"platform"`
 }
