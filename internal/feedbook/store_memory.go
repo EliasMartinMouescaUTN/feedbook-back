@@ -218,6 +218,12 @@ func (s *Store) AuthorByID(authorID string) (Author, bool) {
 	return Author{}, false
 }
 
+func (s *Store) IsFollowing(userID string, authorID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.followedAuthors[authorID]
+}
+
 func (s *Store) ToggleFollow(authorID string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -254,6 +260,14 @@ func (s *Store) AddBookToLibrary(bookID string) error {
 		Title:         book.Title,
 		CoverImageURL: book.CoverImageURL,
 	})
+	if _, exists := s.readingProgress[bookID]; !exists {
+		s.readingProgress[bookID] = ReadingProgress{
+			BookID:      bookID,
+			CurrentPage: 0,
+			TotalPages:  book.Pages,
+			UpdatedAt:   time.Now().Format("02/01/2006"),
+		}
+	}
 	return nil
 }
 
@@ -420,9 +434,9 @@ func sampleNotifications() Notifications {
 
 func sampleBooks() []Book {
 	return []Book{
-		{ID: "1", Title: "The Secret History", Author: "Donna Tartt", CoverImageURL: coverURL("9781400031702"), Genre: "Fiction", Description: "A group of classics students at a small Vermont college become entangled in a murder.", Pages: 559, Language: "English", Published: "27/05/1987", ISBN: "987698762"},
-		{ID: "2", Title: "The Name of the Rose", Author: "Umberto Eco", CoverImageURL: coverURL("9780156001311"), Genre: "Mystery", Description: "A medieval monk investigates a series of mysterious deaths in an Italian abbey.", Pages: 242, Language: "English", Published: "27/05/1927", ISBN: "987618762"},
-		{ID: "3", Title: "Beloved", Author: "Toni Morrison", CoverImageURL: coverURL("9781400033416"), Genre: "Fiction", Description: "A former enslaved woman is haunted by the ghost of her daughter.", Pages: 559, Language: "English", Published: "27/05/1986", ISBN: "987618763"},
+		{ID: "1", AuthorID: "a1", Title: "The Secret History", Author: "Donna Tartt", CoverImageURL: coverURL("9781400031702"), Genre: "Fiction", Description: "A group of classics students at a small Vermont college become entangled in a murder.", Pages: 559, Language: "English", Published: "27/05/1987", ISBN: "987698762"},
+		{ID: "2", AuthorID: "a2", Title: "The Name of the Rose", Author: "Umberto Eco", CoverImageURL: coverURL("9780156001311"), Genre: "Mystery", Description: "A medieval monk investigates a series of mysterious deaths in an Italian abbey.", Pages: 242, Language: "English", Published: "27/05/1927", ISBN: "987618762"},
+		{ID: "3", AuthorID: "a3", Title: "Beloved", Author: "Toni Morrison", CoverImageURL: coverURL("9781400033416"), Genre: "Fiction", Description: "A former enslaved woman is haunted by the ghost of her daughter.", Pages: 559, Language: "English", Published: "27/05/1986", ISBN: "987618763"},
 	}
 }
 

@@ -148,6 +148,7 @@ type HeatmapEntryModel struct {
 
 type BookModel struct {
 	ID            string `gorm:"primaryKey"`
+	AuthorID      string
 	Title         string
 	Author        string
 	Description   string

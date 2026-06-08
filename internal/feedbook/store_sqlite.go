@@ -79,7 +79,7 @@ func (s *SQLiteStore) seed() {
 
 	for _, b := range sampleBooks() {
 		s.db.Create(&BookModel{
-			ID: b.ID, Title: b.Title, Author: b.Author,
+			ID: b.ID, AuthorID: b.AuthorID, Title: b.Title, Author: b.Author,
 			Description: b.Description, CoverImageURL: b.CoverImageURL,
 			Pages: b.Pages, ISBN: b.ISBN, Genre: b.Genre,
 			Language: b.Language, Published: b.Published,
@@ -549,7 +549,7 @@ func (s *SQLiteStore) Books() []Book {
 	result := make([]Book, len(models))
 	for i, m := range models {
 		result[i] = Book{
-			ID: m.ID, Title: m.Title, Author: m.Author,
+			ID: m.ID, AuthorID: m.AuthorID, Title: m.Title, Author: m.Author,
 			Description: m.Description, CoverImageURL: m.CoverImageURL,
 			Pages: m.Pages, ISBN: m.ISBN, Genre: m.Genre,
 			Language: m.Language, Published: m.Published,
@@ -564,7 +564,7 @@ func (s *SQLiteStore) BookByID(bookID string) (Book, bool) {
 		return Book{}, false
 	}
 	return Book{
-		ID: m.ID, Title: m.Title, Author: m.Author,
+		ID: m.ID, AuthorID: m.AuthorID, Title: m.Title, Author: m.Author,
 		Description: m.Description, CoverImageURL: m.CoverImageURL,
 		Pages: m.Pages, ISBN: m.ISBN, Genre: m.Genre,
 		Language: m.Language, Published: m.Published,
@@ -706,7 +706,7 @@ func (s *SQLiteStore) Authors() []Author {
 		bookDTOs := make([]Book, len(m.Books))
 		for j, b := range m.Books {
 			bookDTOs[j] = Book{
-				ID: b.ID, Title: b.Title, Author: b.Author,
+				ID: b.ID, AuthorID: b.AuthorID, Title: b.Title, Author: b.Author,
 				Description: b.Description, CoverImageURL: b.CoverImageURL,
 				Pages: b.Pages, ISBN: b.ISBN, Genre: b.Genre,
 				Language: b.Language, Published: b.Published,
@@ -730,7 +730,7 @@ func (s *SQLiteStore) AuthorByID(authorID string) (Author, bool) {
 	bookDTOs := make([]Book, len(m.Books))
 	for j, b := range m.Books {
 		bookDTOs[j] = Book{
-			ID: b.ID, Title: b.Title, Author: b.Author,
+			ID: b.ID, AuthorID: b.AuthorID, Title: b.Title, Author: b.Author,
 			Description: b.Description, CoverImageURL: b.CoverImageURL,
 			Pages: b.Pages, ISBN: b.ISBN, Genre: b.Genre,
 			Language: b.Language, Published: b.Published,
@@ -742,6 +742,17 @@ func (s *SQLiteStore) AuthorByID(authorID string) (Author, bool) {
 		Description: m.Description, Biography: m.Biography,
 		ImageURL: m.ImageURL, Books: bookDTOs, Followers: m.Followers,
 	}, true
+}
+
+func (s *SQLiteStore) IsFollowing(userID string, authorID string) bool {
+	var profile ProfileModel
+	s.db.Where("type = ?", "own").First(&profile)
+
+	var count int64
+	s.db.Model(&FollowedAuthorModel{}).
+		Where("profile_id = ? AND author_id = ?", profile.ID, authorID).
+		Count(&count)
+	return count > 0
 }
 
 func (s *SQLiteStore) ToggleFollow(authorID string) bool {
@@ -781,6 +792,16 @@ func (s *SQLiteStore) AddBookToLibrary(bookID string) error {
 		Title:         book.Title,
 		CoverImageURL: book.CoverImageURL,
 	})
+	var progressCount int64
+	s.db.Model(&ReadingProgressModel{}).Where("book_id = ?", book.ID).Count(&progressCount)
+	if progressCount == 0 {
+		s.db.Create(&ReadingProgressModel{
+			BookID:      book.ID,
+			CurrentPage: 0,
+			TotalPages:  book.Pages,
+			UpdatedAt:   time.Now().Format("02/01/2006"),
+		})
+	}
 	return nil
 }
 
