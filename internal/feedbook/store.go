@@ -17,6 +17,7 @@ type Storer interface {
 	ToggleLike(userID string, reviewID string) (Review, error)
 	Authors() []Author
 	AuthorByID(string) (Author, bool)
+	IsFollowing(userID string, authorID string) bool
 	ToggleFollow(string) bool
 	AddBookToLibrary(bookID string) error
 	RemoveBookFromLibrary(bookID string) error

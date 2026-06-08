@@ -2,6 +2,7 @@ package feedbook
 
 type Book struct {
 	ID            string `json:"id"`
+	AuthorID      string `json:"author_id"`
 	Title         string `json:"title"`
 	Author        string `json:"author"`
 	Description   string `json:"description"`
@@ -55,6 +56,7 @@ type Author struct {
 	ImageURL    string `json:"image_url,omitempty"`
 	Books       []Book `json:"books"`
 	Followers   int    `json:"followers"`
+	IsFollowing bool   `json:"is_following"`
 }
 
 type Home struct {

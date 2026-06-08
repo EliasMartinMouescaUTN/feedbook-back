@@ -91,13 +91,20 @@ func (s *Service) ToggleLike(bookID string, reviewID string) (Review, error) {
 	return s.store.ToggleLike("me", reviewID)
 }
 
-func (s *Service) GetAuthors() []Author { return s.store.Authors() }
+func (s *Service) GetAuthors() []Author {
+	authors := s.store.Authors()
+	for i, a := range authors {
+		authors[i].IsFollowing = s.store.IsFollowing("me", a.ID)
+	}
+	return authors
+}
 
 func (s *Service) GetAuthorByID(authorID string) (Author, error) {
 	author, ok := s.store.AuthorByID(authorID)
 	if !ok {
 		return Author{}, ErrNotFound
 	}
+	author.IsFollowing = s.store.IsFollowing("me", authorID)
 	return author, nil
 }
 
