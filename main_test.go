@@ -19,7 +19,7 @@ func TestHandleLoginSuccess(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 
-	handleLogin(recorder, request)
+	newAccountStore().handleLogin(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -43,10 +43,59 @@ func TestHandleLoginInvalidCredentials(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 
-	handleLogin(recorder, request)
+	newAccountStore().handleLogin(recorder, request)
 
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", recorder.Code)
+	}
+}
+
+func TestHandleRegisterThenLogin(t *testing.T) {
+	accounts := newAccountStore()
+	registerRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/register",
+		strings.NewReader(`{"username":"reader@example.com","password":"secret"}`),
+	)
+	registerRecorder := httptest.NewRecorder()
+
+	accounts.handleRegister(registerRecorder, registerRequest)
+
+	if registerRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected register status 201, got %d", registerRecorder.Code)
+	}
+
+	loginRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader(`{"username":"reader@example.com","password":"secret"}`),
+	)
+	loginRecorder := httptest.NewRecorder()
+
+	accounts.handleLogin(loginRecorder, loginRequest)
+
+	if loginRecorder.Code != http.StatusOK {
+		t.Fatalf("expected login status 200, got %d", loginRecorder.Code)
+	}
+}
+
+func TestHandleRegisterRejectsDuplicateAccount(t *testing.T) {
+	accounts := newAccountStore()
+	body := `{"username":"reader@example.com","password":"secret"}`
+
+	firstRequest := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+	firstRecorder := httptest.NewRecorder()
+	accounts.handleRegister(firstRecorder, firstRequest)
+	if firstRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected first register status 201, got %d", firstRecorder.Code)
+	}
+
+	secondRequest := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
+	secondRecorder := httptest.NewRecorder()
+	accounts.handleRegister(secondRecorder, secondRequest)
+
+	if secondRecorder.Code != http.StatusConflict {
+		t.Fatalf("expected duplicate register status 409, got %d", secondRecorder.Code)
 	}
 }
 

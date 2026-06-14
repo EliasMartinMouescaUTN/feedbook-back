@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	feedbook "github.com/feedbook/back/internal/feedbook"
@@ -38,6 +40,17 @@ type loginResponse struct {
 
 type errorResponse struct {
 	Error string `json:"error"`
+}
+
+type accountStore struct {
+	mu       sync.RWMutex
+	accounts map[string]string
+}
+
+func newAccountStore() *accountStore {
+	store := &accountStore{accounts: make(map[string]string)}
+	store.accounts["demo"] = hashPassword("demo", "demo")
+	return store
 }
 
 func main() {
@@ -69,7 +82,9 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/login", handleLogin)
+	accounts := newAccountStore()
+	mux.HandleFunc("/register", accounts.handleRegister)
+	mux.HandleFunc("/login", accounts.handleLogin)
 	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(service)))
 
 	addr := resolveAddr(os.Getenv("FEEDBOOK_ADDR"))
@@ -117,7 +132,7 @@ func resolveFirebaseCredentialsFile() string {
 	return ""
 }
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
+func (s *accountStore) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
 		return
@@ -129,36 +144,96 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	username := strings.TrimSpace(request.Username)
-	if username == "" {
-		username = strings.TrimSpace(request.User)
-	}
-	password := strings.TrimSpace(request.Password)
-
-	if username == "" || password == "" {
+	username, password, ok := normalizeCredentials(request)
+	if !ok {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "username and password are required"})
 		return
 	}
 
-	if username != password {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid credentials"})
+	if len(password) < 4 {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "password must be at least 4 characters"})
 		return
 	}
 
-	expiresAt := time.Now().Add(30 * 24 * time.Hour).Unix()
-	token, err := signJWT(map[string]any{
-		"username":     username,
-		"password":     password,
-		"secure_login": request.SecureLogin,
-		"iat":          time.Now().Unix(),
-		"exp":          expiresAt,
-	})
+	s.mu.Lock()
+	if _, exists := s.accounts[username]; exists {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusConflict, errorResponse{Error: "account already exists"})
+		return
+	}
+	s.accounts[username] = hashPassword(username, password)
+	s.mu.Unlock()
+
+	response, err := createLoginResponse(username, request.SecureLogin)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, loginResponse{Token: token, Exp: expiresAt})
+	writeJSON(w, http.StatusCreated, response)
+}
+
+func (s *accountStore) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+		return
+	}
+
+	var request loginRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json body"})
+		return
+	}
+
+	username, password, ok := normalizeCredentials(request)
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "username and password are required"})
+		return
+	}
+
+	s.mu.RLock()
+	expectedHash, exists := s.accounts[username]
+	s.mu.RUnlock()
+	if !exists || subtle.ConstantTimeCompare([]byte(expectedHash), []byte(hashPassword(username, password))) != 1 {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid credentials"})
+		return
+	}
+
+	response, err := createLoginResponse(username, request.SecureLogin)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, response)
+}
+
+func normalizeCredentials(request loginRequest) (string, string, bool) {
+	username := strings.TrimSpace(request.Username)
+	if username == "" {
+		username = strings.TrimSpace(request.User)
+	}
+	password := strings.TrimSpace(request.Password)
+	return username, password, username != "" && password != ""
+}
+
+func hashPassword(username string, password string) string {
+	sum := sha256.Sum256([]byte(strings.ToLower(username) + ":" + password))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+func createLoginResponse(username string, secureLogin bool) (loginResponse, error) {
+	expiresAt := time.Now().Add(30 * 24 * time.Hour).Unix()
+	token, err := signJWT(map[string]any{
+		"username":     username,
+		"secure_login": secureLogin,
+		"iat":          time.Now().Unix(),
+		"exp":          expiresAt,
+	})
+	if err != nil {
+		return loginResponse{}, err
+	}
+	return loginResponse{Token: token, Exp: expiresAt}, nil
 }
 
 func signJWT(claims map[string]any) (string, error) {
