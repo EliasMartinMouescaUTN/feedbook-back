@@ -20,6 +20,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	if err := db.AutoMigrate(
+		&AccountModel{},
 		&ProfileModel{},
 		&AvatarModel{},
 		&ReadingGoalModel{},
@@ -50,6 +51,7 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	store := &SQLiteStore{db: db}
+	store.ensureDefaultAccount()
 
 	var count int64
 	db.Model(&BookModel{}).Count(&count)
@@ -58,6 +60,47 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	return store, nil
+}
+
+func (s *SQLiteStore) ensureDefaultAccount() {
+	_, _ = s.CreateAccount("demo", "demo")
+}
+
+func (s *SQLiteStore) CreateAccount(username string, password string) (bool, error) {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+	if username == "" || password == "" {
+		return false, nil
+	}
+
+	var count int64
+	if err := s.db.Model(&AccountModel{}).Where("username = ?", username).Count(&count).Error; err != nil {
+		return false, err
+	}
+	if count > 0 {
+		return false, nil
+	}
+
+	if err := s.db.Create(&AccountModel{Username: username, Password: password}).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *SQLiteStore) AccountPassword(username string) (string, bool, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return "", false, nil
+	}
+
+	var account AccountModel
+	if err := s.db.First(&account, "username = ?", username).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	return account.Password, true, nil
 }
 
 func (s *SQLiteStore) seed() {

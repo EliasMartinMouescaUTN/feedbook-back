@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"log"
@@ -42,21 +41,49 @@ type errorResponse struct {
 	Error string `json:"error"`
 }
 
-type accountStore struct {
+type accountStore interface {
+	CreateAccount(username string, password string) (bool, error)
+	AccountPassword(username string) (string, bool, error)
+}
+
+type memoryAccountStore struct {
 	mu       sync.RWMutex
 	accounts map[string]string
 }
 
-func newAccountStore() *accountStore {
-	store := &accountStore{accounts: make(map[string]string)}
-	store.accounts["demo"] = hashPassword("demo", "demo")
+func newMemoryAccountStore() *memoryAccountStore {
+	store := &memoryAccountStore{accounts: make(map[string]string)}
+	store.accounts["demo"] = "demo"
 	return store
+}
+
+func (s *memoryAccountStore) CreateAccount(username string, password string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, exists := s.accounts[username]; exists {
+		return false, nil
+	}
+	s.accounts[username] = password
+	return true, nil
+}
+
+func (s *memoryAccountStore) AccountPassword(username string) (string, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	password, exists := s.accounts[username]
+	return password, exists, nil
 }
 
 func main() {
 	var store feedbook.Storer
+	var accounts accountStore
 	switch os.Getenv("FEEDBOOK_STORE") {
-	case "sqlite":
+	case "memory":
+		store = feedbook.NewMemoryStore()
+		accounts = newMemoryAccountStore()
+	default:
 		dbPath := os.Getenv("FEEDBOOK_DB_PATH")
 		if dbPath == "" {
 			dbPath = "feedbook.db"
@@ -66,8 +93,7 @@ func main() {
 			log.Fatalf("sqlite store: %v", err)
 		}
 		store = s
-	default:
-		store = feedbook.NewMemoryStore()
+		accounts = s
 	}
 
 	service := feedbook.NewService(store)
@@ -82,9 +108,8 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	accounts := newAccountStore()
-	mux.HandleFunc("/register", accounts.handleRegister)
-	mux.HandleFunc("/login", accounts.handleLogin)
+	mux.HandleFunc("/register", handleRegister(accounts))
+	mux.HandleFunc("/login", handleLogin(accounts))
 	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(service)))
 
 	addr := resolveAddr(os.Getenv("FEEDBOOK_ADDR"))
@@ -132,80 +157,89 @@ func resolveFirebaseCredentialsFile() string {
 	return ""
 }
 
-func (s *accountStore) handleRegister(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
-		return
-	}
+func handleRegister(accounts accountStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+			return
+		}
 
-	var request loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json body"})
-		return
-	}
+		var request loginRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json body"})
+			return
+		}
 
-	username, password, ok := normalizeCredentials(request)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "username and password are required"})
-		return
-	}
+		username, password, ok := normalizeCredentials(request)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "username and password are required"})
+			return
+		}
 
-	if len(password) < 4 {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "password must be at least 4 characters"})
-		return
-	}
+		if len(password) < 4 {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "password must be at least 4 characters"})
+			return
+		}
 
-	s.mu.Lock()
-	if _, exists := s.accounts[username]; exists {
-		s.mu.Unlock()
-		writeJSON(w, http.StatusConflict, errorResponse{Error: "account already exists"})
-		return
-	}
-	s.accounts[username] = hashPassword(username, password)
-	s.mu.Unlock()
+		created, err := accounts.CreateAccount(username, password)
+		if err != nil {
+			log.Printf("create account: %v", err)
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create account"})
+			return
+		}
+		if !created {
+			writeJSON(w, http.StatusConflict, errorResponse{Error: "account already exists"})
+			return
+		}
 
-	response, err := createLoginResponse(username, request.SecureLogin)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
-		return
-	}
+		response, err := createLoginResponse(username, request.SecureLogin)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
+			return
+		}
 
-	writeJSON(w, http.StatusCreated, response)
+		writeJSON(w, http.StatusCreated, response)
+	}
 }
 
-func (s *accountStore) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
-		return
-	}
+func handleLogin(accounts accountStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, errorResponse{Error: "method not allowed"})
+			return
+		}
 
-	var request loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json body"})
-		return
-	}
+		var request loginRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid json body"})
+			return
+		}
 
-	username, password, ok := normalizeCredentials(request)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "username and password are required"})
-		return
-	}
+		username, password, ok := normalizeCredentials(request)
+		if !ok {
+			writeJSON(w, http.StatusBadRequest, errorResponse{Error: "username and password are required"})
+			return
+		}
 
-	s.mu.RLock()
-	expectedHash, exists := s.accounts[username]
-	s.mu.RUnlock()
-	if !exists || subtle.ConstantTimeCompare([]byte(expectedHash), []byte(hashPassword(username, password))) != 1 {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid credentials"})
-		return
-	}
+		expectedPassword, exists, err := accounts.AccountPassword(username)
+		if err != nil {
+			log.Printf("read account: %v", err)
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to read account"})
+			return
+		}
+		if !exists || expectedPassword != password {
+			writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "invalid credentials"})
+			return
+		}
 
-	response, err := createLoginResponse(username, request.SecureLogin)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
-		return
-	}
+		response, err := createLoginResponse(username, request.SecureLogin)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "unable to create token"})
+			return
+		}
 
-	writeJSON(w, http.StatusOK, response)
+		writeJSON(w, http.StatusOK, response)
+	}
 }
 
 func normalizeCredentials(request loginRequest) (string, string, bool) {
@@ -215,11 +249,6 @@ func normalizeCredentials(request loginRequest) (string, string, bool) {
 	}
 	password := strings.TrimSpace(request.Password)
 	return username, password, username != "" && password != ""
-}
-
-func hashPassword(username string, password string) string {
-	sum := sha256.Sum256([]byte(strings.ToLower(username) + ":" + password))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func createLoginResponse(username string, secureLogin bool) (loginResponse, error) {

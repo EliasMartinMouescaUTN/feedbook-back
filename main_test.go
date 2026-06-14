@@ -19,7 +19,7 @@ func TestHandleLoginSuccess(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 
-	newAccountStore().handleLogin(recorder, request)
+	handleLogin(newMemoryAccountStore())(recorder, request)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", recorder.Code)
@@ -43,7 +43,7 @@ func TestHandleLoginInvalidCredentials(t *testing.T) {
 	)
 	recorder := httptest.NewRecorder()
 
-	newAccountStore().handleLogin(recorder, request)
+	handleLogin(newMemoryAccountStore())(recorder, request)
 
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401, got %d", recorder.Code)
@@ -51,7 +51,7 @@ func TestHandleLoginInvalidCredentials(t *testing.T) {
 }
 
 func TestHandleRegisterThenLogin(t *testing.T) {
-	accounts := newAccountStore()
+	accounts := newMemoryAccountStore()
 	registerRequest := httptest.NewRequest(
 		http.MethodPost,
 		"/register",
@@ -59,7 +59,7 @@ func TestHandleRegisterThenLogin(t *testing.T) {
 	)
 	registerRecorder := httptest.NewRecorder()
 
-	accounts.handleRegister(registerRecorder, registerRequest)
+	handleRegister(accounts)(registerRecorder, registerRequest)
 
 	if registerRecorder.Code != http.StatusCreated {
 		t.Fatalf("expected register status 201, got %d", registerRecorder.Code)
@@ -72,7 +72,7 @@ func TestHandleRegisterThenLogin(t *testing.T) {
 	)
 	loginRecorder := httptest.NewRecorder()
 
-	accounts.handleLogin(loginRecorder, loginRequest)
+	handleLogin(accounts)(loginRecorder, loginRequest)
 
 	if loginRecorder.Code != http.StatusOK {
 		t.Fatalf("expected login status 200, got %d", loginRecorder.Code)
@@ -80,22 +80,59 @@ func TestHandleRegisterThenLogin(t *testing.T) {
 }
 
 func TestHandleRegisterRejectsDuplicateAccount(t *testing.T) {
-	accounts := newAccountStore()
+	accounts := newMemoryAccountStore()
 	body := `{"username":"reader@example.com","password":"secret"}`
 
 	firstRequest := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
 	firstRecorder := httptest.NewRecorder()
-	accounts.handleRegister(firstRecorder, firstRequest)
+	handleRegister(accounts)(firstRecorder, firstRequest)
 	if firstRecorder.Code != http.StatusCreated {
 		t.Fatalf("expected first register status 201, got %d", firstRecorder.Code)
 	}
 
 	secondRequest := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(body))
 	secondRecorder := httptest.NewRecorder()
-	accounts.handleRegister(secondRecorder, secondRequest)
+	handleRegister(accounts)(secondRecorder, secondRequest)
 
 	if secondRecorder.Code != http.StatusConflict {
 		t.Fatalf("expected duplicate register status 409, got %d", secondRecorder.Code)
+	}
+}
+
+func TestSQLiteAccountStorePersistsRegisteredAccount(t *testing.T) {
+	dbPath := t.TempDir() + "/feedbook.db"
+	accounts, err := feedbook.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("create sqlite store: %v", err)
+	}
+	registerRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/register",
+		strings.NewReader(`{"username":"sqlite@example.com","password":"secret"}`),
+	)
+	registerRecorder := httptest.NewRecorder()
+
+	handleRegister(accounts)(registerRecorder, registerRequest)
+
+	if registerRecorder.Code != http.StatusCreated {
+		t.Fatalf("expected register status 201, got %d", registerRecorder.Code)
+	}
+
+	reopenedAccounts, err := feedbook.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("reopen sqlite store: %v", err)
+	}
+	loginRequest := httptest.NewRequest(
+		http.MethodPost,
+		"/login",
+		strings.NewReader(`{"username":"sqlite@example.com","password":"secret"}`),
+	)
+	loginRecorder := httptest.NewRecorder()
+
+	handleLogin(reopenedAccounts)(loginRecorder, loginRequest)
+
+	if loginRecorder.Code != http.StatusOK {
+		t.Fatalf("expected login status 200 after reopening db, got %d", loginRecorder.Code)
 	}
 }
 

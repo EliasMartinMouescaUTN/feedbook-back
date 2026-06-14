@@ -2,6 +2,11 @@ package feedbook
 
 import "gorm.io/gorm"
 
+type AccountModel struct {
+	Username string `gorm:"primaryKey"`
+	Password string
+}
+
 type ProfileModel struct {
 	gorm.Model
 	Type            string `gorm:"uniqueIndex:idx_profile_type;size:10"`
