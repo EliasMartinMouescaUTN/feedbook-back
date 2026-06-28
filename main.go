@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultAddr              = "127.0.0.1:8080"
+	defaultAddr              = ":8080"
 	defaultFirebaseCredsFile = "firebase-service-account.json"
 	defaultFirebaseProjectID = "feedbook-9132b"
 	jwtSecret                = "feedbook-local-secret"

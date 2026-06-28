@@ -50,7 +50,7 @@ go test ./...
 go run .
 ```
 
-Levanta en `http://127.0.0.1:8080` por defecto.
+Levanta en `http://0.0.0.0:8080` por defecto y queda escuchando en todas las interfaces.
 Se puede cambiar con `FEEDBOOK_ADDR`.
 
 ## Push notifications via Firebase
