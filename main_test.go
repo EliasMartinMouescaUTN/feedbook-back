@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -148,6 +150,31 @@ func TestResolveAddrTrimsConfiguredValue(t *testing.T) {
 	}
 }
 
+func TestResolveFirebaseCredentialsFileUsesEnvOverride(t *testing.T) {
+	t.Setenv("FIREBASE_CREDENTIALS_FILE", " config/firebase.json ")
+
+	if got := resolveFirebaseCredentialsFile(); got != "config/firebase.json" {
+		t.Fatalf("expected env credentials file, got %q", got)
+	}
+}
+
+func TestResolveFirebaseCredentialsFileFindsConfigAdminSDKFile(t *testing.T) {
+	withWorkingDir(t, t.TempDir())
+	t.Setenv("FIREBASE_CREDENTIALS_FILE", "")
+
+	if err := os.Mkdir("config", 0o755); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	credentialsFile := filepath.Join("config", "feedbook-firebase-adminsdk-test.json")
+	if err := os.WriteFile(credentialsFile, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write credentials file: %v", err)
+	}
+
+	if got := resolveFirebaseCredentialsFile(); got != credentialsFile {
+		t.Fatalf("expected config admin sdk credentials file %q, got %q", credentialsFile, got)
+	}
+}
+
 func TestAPIEndpointsAreMountedUnderAPIPrefix(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", feedbookhttp.NewRouter(feedbook.NewService(feedbook.NewMemoryStore()))))
@@ -159,4 +186,21 @@ func TestAPIEndpointsAreMountedUnderAPIPrefix(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200 for mounted api route, got %d", rec.Code)
 	}
+}
+
+func withWorkingDir(t *testing.T, dir string) {
+	t.Helper()
+
+	previousDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working dir: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("change working dir: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previousDir); err != nil {
+			t.Fatalf("restore working dir: %v", err)
+		}
+	})
 }

@@ -148,11 +148,25 @@ func resolveFirebaseCredentialsFile() string {
 	if credentialsFile := strings.TrimSpace(os.Getenv("FIREBASE_CREDENTIALS_FILE")); credentialsFile != "" {
 		return credentialsFile
 	}
-	if _, err := os.Stat(defaultFirebaseCredsFile); err == nil {
-		return defaultFirebaseCredsFile
+
+	candidates := []string{
+		defaultFirebaseCredsFile,
+		filepath.Join("config", defaultFirebaseCredsFile),
 	}
-	if matches, err := filepath.Glob("*firebase-adminsdk*.json"); err == nil && len(matches) > 0 {
-		return matches[0]
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	patterns := []string{
+		"*firebase-adminsdk*.json",
+		filepath.Join("config", "*firebase-adminsdk*.json"),
+	}
+	for _, pattern := range patterns {
+		if matches, err := filepath.Glob(pattern); err == nil && len(matches) > 0 {
+			return matches[0]
+		}
 	}
 	return ""
 }
